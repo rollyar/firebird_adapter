@@ -22,17 +22,9 @@ jobs:
             rails: '7-2-stable'
             firebird: '3.0.11'
 
-    services:
-      docker:
-        image-credentials: false
-        options: >-
-          --health-cmd "timeout 15s gsecinfo -database /firebird/data/test.fdb -user sysdba -password masterkey"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        env:
-          ISC_PASSWORD: masterkey
-          FIREBIRD_DATABASE: /firebird/data/test.fdb
+    env:
+      ISC_PASSWORD: masterkey
+      FIREBIRD_DATABASE: /firebird/data/test.fdb
 
     steps:
     - name: Checkout
