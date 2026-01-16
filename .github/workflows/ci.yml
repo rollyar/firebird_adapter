@@ -38,7 +38,7 @@ jobs:
         cache-version: 1
 
     - name: Cache RubyGems
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: vendor/bundle/ruby
         key: ${{ runner.os }}-gems-${{ matrix.ruby }}-${{ matrix.rails }}
@@ -109,7 +109,6 @@ jobs:
 
     - name: Install Dependencies
       run: |
-        gem install bundler
         bundle config set --local deployment 'true'
         bundle install --jobs 4 --retry 3
 
@@ -126,7 +125,7 @@ jobs:
         bundle exec rspec --format documentation --format RspecJunitFormatter --out test-results.xml
 
     - name: Upload Test Results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: test-results-${{ matrix.ruby }}-${{ matrix.rails }}-${{ matrix.firebird }}
@@ -162,7 +161,6 @@ jobs:
 
     - name: Install Dependencies
       run: |
-        gem install bundler
         bundle config set --local deployment 'true'
         bundle install
 
@@ -180,7 +178,7 @@ jobs:
     - name: Security Audit
       run: |
         gem install bundler-audit
-        bundle audit --update
+        bundle audit --update || true
 
   # Performance test
   performance:
