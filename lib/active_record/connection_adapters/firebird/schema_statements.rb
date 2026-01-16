@@ -496,10 +496,11 @@ module ActiveRecord
           end
         end
 
-        def extract_default_function(default)
-          return nil if default.blank?
+        def extract_default_function(default_value, default)
+          return default if default_value.present?
+          return default if default.present?
 
-          default.strip.match(/^DEFAULT\s+(.+)$/i)&.captures&.first
+          nil
         end
 
         def unwrap_value(value)

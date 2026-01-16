@@ -7,9 +7,13 @@ RSpec.describe "CRUD Operations" do
 
   describe "INSERT" do
     it "creates a record" do
+      # Debug: check what columns exist
+      columns = SisTest.columns
+      puts "Available columns: #{columns.map(&:name).join(", ")}"
+
       record = SisTest.create!(
-        field_varchar: "Test String",
-        field_integer: 42
+        FIELD_VARCHAR: "Test String",
+        FIELD_INTEGER: 42
       )
 
       expect(record).to be_persisted
