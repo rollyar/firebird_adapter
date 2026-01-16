@@ -1,0 +1,70 @@
+# frozen_string_literal: true
+
+require "bundler/setup"
+require "firebird_adapter"
+require "active_record"
+
+DB_PATH = ENV.fetch("FIREBIRD_DATABASE", File.expand_path("db/test.fdb", __dir__))
+puts "Using database: #{DB_PATH}" if ENV["DEBUG_SQL"]
+
+RSpec.configure do |config|
+  # Enable flags like --only-failures and --next-failure
+  config.example_status_persistence_file_path = ".rspec_status"
+
+  # Disable RSpec exposing methods globally on `Module` and `main`
+  # config.disable_monkey_patching!
+
+  config.expect_with :rspec do |c|
+    c.syntax = :expect
+  end
+
+  config.before(:suite) do
+    ActiveRecord::Base.establish_connection(
+      adapter: "firebird",
+      database: DB_PATH,
+      username: ENV.fetch("FIREBIRD_USERNAME", "SYSDBA"),
+      password: ENV.fetch("FIREBIRD_PASSWORD", "masterkey"),
+      charset: ENV.fetch("FIREBIRD_CHARSET", "UTF8"),
+      host: ENV.fetch("FIREBIRD_HOST", "localhost")
+    )
+
+    conn = ActiveRecord::Base.connection
+    if conn.table_exists?(:sis_tests)
+      begin
+        conn.execute("DELETE FROM \"SIS_TESTS\"")
+        conn.execute("DROP SEQUENCE sis_tests_seq")
+      rescue StandardError
+        nil
+      end
+    end
+
+    unless conn.table_exists?(:sis_tests)
+      conn.create_table :sis_tests do |t|
+        t.bigint :id_test
+        t.string :field_varchar
+        t.string :field_char, limit: 10
+        t.date :field_date
+        t.integer :field_smallint
+        t.integer :field_integer
+        t.float :field_double_precision
+        t.text :field_blob_text
+        t.binary :field_blob_binary
+      end
+
+    end
+
+    # Define the model class for tests
+    class SisTest < ActiveRecord::Base
+      self.table_name = :sis_tests
+    end
+
+    # Reset column information to ensure the model is aware of the schema
+    SisTest.reset_column_information
+
+    config.after(:each) do
+      if ActiveRecord::Base.connection.table_exists?(:sis_tests)
+        ActiveRecord::Base.connection.execute("DELETE FROM \"SIS_TESTS\"")
+      end
+    end
+  end
+end

@@ -1,117 +1,545 @@
-require 'fb'
+# frozen_string_literal: true
 
-require 'active_record/connection_adapters/firebird/connection'
-require 'active_record/connection_adapters/firebird/database_limits'
-require 'active_record/connection_adapters/firebird/database_statements'
-require 'active_record/connection_adapters/firebird/schema_statements'
-require 'active_record/connection_adapters/firebird/quoting'
+require "active_record/connection_adapters/abstract_adapter"
+require "active_record/connection_adapters/statement_pool"
+require "active_record/connection_adapters/firebird/connection"
+require "active_record/connection_adapters/firebird/database_statements"
+require "active_record/connection_adapters/firebird/schema_statements"
+require "active_record/connection_adapters/firebird/quoting"
+require "active_record/connection_adapters/firebird/schema_definitions"
+require "active_record/connection_adapters/firebird/column"
+require "active_record/connection_adapters/firebird/type_metadata"
 
-require 'arel/visitors/firebird'
+module ActiveRecord
+  module ConnectionAdapters
+    class FirebirdAdapter < AbstractAdapter
+      ADAPTER_NAME = "Firebird"
+      DEFAULT_ENCODING = "UTF8"
 
-class ActiveRecord::ConnectionAdapters::FirebirdAdapter < ActiveRecord::ConnectionAdapters::AbstractAdapter
+      include Firebird::DatabaseStatements
+      include Firebird::SchemaStatements
+      include Firebird::Quoting
 
-  ADAPTER_NAME = "Firebird".freeze
-  DEFAULT_ENCODING = "Windows-1252".freeze
+      ##
+      # :singleton-method:
+      # Configuración del adaptador
+      class_attribute :emulate_booleans, default: true
+      class_attribute :datetime_with_timezone, default: true
 
-  include ActiveRecord::ConnectionAdapters::Firebird::DatabaseLimits
-  include ActiveRecord::ConnectionAdapters::Firebird::DatabaseStatements
-  include ActiveRecord::ConnectionAdapters::Firebird::SchemaStatements
-  include ActiveRecord::ConnectionAdapters::Firebird::Quoting
+      NATIVE_DATABASE_TYPES = {
+        primary_key: "BIGINT NOT NULL PRIMARY KEY",
+        string: { name: "VARCHAR", limit: 255 },
+        text: { name: "BLOB SUB_TYPE TEXT" },
+        integer: { name: "INTEGER" },
+        bigint: { name: "BIGINT" },
+        float: { name: "FLOAT" },
+        decimal: { name: "DECIMAL" },
+        numeric: { name: "NUMERIC" },
+        datetime: { name: "TIMESTAMP" },
+        timestamp: { name: "TIMESTAMP" },
+        timestamptz: { name: "TIMESTAMP WITH TIME ZONE" }, # Firebird 4+
+        time: { name: "TIME" },
+        timetz: { name: "TIME WITH TIME ZONE" }, # Firebird 4+
+        date: { name: "DATE" },
+        binary: { name: "BLOB SUB_TYPE BINARY" },
+        boolean: { name: "BOOLEAN" }, # Firebird 3+
+        json: { name: "BLOB SUB_TYPE TEXT" },
+        uuid: { name: "CHAR(16) CHARACTER SET OCTETS" },
+        int128: { name: "INT128" } # Firebird 4+
+      }.freeze
 
-  def initialize(connection)
-    @connection = ::Fb::Database.connect(
-      database: database_path(connection),
-      username: connection[:username],
-      password: connection[:password],
-      charset: connection[:encoding],
-      downcase_names: true
-    )
-    super(connection)
-  end
+      def initialize(config)
+        super(config)
+        @config = config
+        @connection_parameters = config.symbolize_keys
 
-  def arel_visitor
-    @arel_visitor ||= Arel::Visitors::Firebird.new(self)
-  end
+        @firebird_version = nil
+        @supports_skip_locked = nil
+        @supports_partial_indexes = nil
+        @supports_parallel_workers = nil
+        @supports_time_zones = nil
+        @connection = nil
+        # Option to normalize column names to lowercase for ActiveRecord
+        @downcase_columns = if @connection_parameters.key?(:downcase)
+                              @connection_parameters[:downcase]
+                            else
+                              @connection_parameters[:downcase_columns] || false
+                            end
+      end
 
-  def prefetch_primary_key?(table_name = nil)
-    true
-  end
+      def downcase_columns?
+        !!@downcase_columns
+      end
 
-  def active?
-    return false unless @connection.open?
+      def connect
+        return @connection if @connection && active?
 
-    @connection.query("SELECT 1 FROM RDB$DATABASE")
-    true
-  rescue
-    false
-  end
+        begin
+          @connection = ::Fb::Database.connect(@connection_parameters)
+        rescue ::Fb::Error => e
+          raise ActiveRecord::ConnectionNotEstablished,
+                "Failed to connect to Firebird: #{e.message}"
+        end
 
-  def reconnect!
-    disconnect!
-    @connection = ::Fb::Database.connect(@config)
-  end
+        @connection
+      end
 
-  def disconnect!
-    super
-    @connection.close rescue nil
-  end
+      def disconnect!
+        super
+        begin
+          @connection.close
+        rescue StandardError
+          nil
+        end
+      end
+      alias disconnect disconnect!
 
-  def reset!
-    reconnect!
-  end
+      def active?
+        @connection&.open?
+      end
 
-  def primary_keys(table_name)
-    raise ArgumentError unless table_name.present?
+      def verify!
+        connect unless active?
+      end
 
-    names = query_values(<<~SQL, "SCHEMA")
-      SELECT
-        s.rdb$field_name
-      FROM
-        rdb$indices i
-        JOIN rdb$index_segments s ON i.rdb$index_name = s.rdb$index_name
-        LEFT JOIN rdb$relation_constraints c ON i.rdb$index_name = c.rdb$index_name
-      WHERE
-        i.rdb$relation_name = '#{table_name.upcase}'
-        AND c.rdb$constraint_type = 'PRIMARY KEY';
-    SQL
+      def reconnect!
+        disconnect!
+        connect
+      end
+      alias reconnect reconnect!
 
-    names.map(&:strip).map(&:downcase)
-  end
+      def transaction_open?
+         @connection&.transaction_started
+      end
+      alias transaction_active? transaction_open?
 
-  def encoding
-    @connection.encoding
-  end
+      def discard!
+        @connection = nil
+      end
 
-  def log(sql, name = "SQL", binds = [], type_casted_binds = [], statement_name = nil) # :doc:
-    sql = sql.encode('UTF-8', encoding) if sql.encoding.to_s == encoding
-    super
-  end
+      def native_database_types
+        NATIVE_DATABASE_TYPES
+      end
 
-  def supports_foreign_keys?
-    true
-  end
+      # Capacidades del adaptador
+      def supports_migrations?
+        true
+      end
 
-protected
+      def supports_primary_key?
+        true
+      end
 
-  def translate_exception(e, message)
-    case e.message
-    when /violation of FOREIGN KEY constraint/
-      ActiveRecord::InvalidForeignKey.new(message)
-    when /violation of PRIMARY or UNIQUE KEY constraint/, /attempt to store duplicate value/
-      ActiveRecord::RecordNotUnique.new(message)
-    when /This operation is not defined for system tables/
-      ActiveRecord::ActiveRecordError.new(message)
-    else
-      super
+      def supports_bulk_alter?
+        false # Firebird no soporta múltiples ALTER en un statement
+      end
+
+      def supports_foreign_keys?
+        true
+      end
+
+      def supports_check_constraints?
+        true
+      end
+
+      def supports_views?
+        true
+      end
+
+      def supports_datetime_with_precision?
+        firebird_version >= 40_000 # Firebird 4.0+
+      end
+
+      def supports_json?
+        true # Via BLOB SUB_TYPE TEXT
+      end
+
+      def supports_uuid?
+        true
+      end
+
+      def supports_savepoints?
+        true
+      end
+
+      def supports_transaction_isolation?
+        true
+      end
+
+      def supports_partial_index?
+        firebird_version >= 50_000 # Firebird 5.0+
+      end
+
+      def supports_expression_index?
+        true
+      end
+
+      def supports_insert_returning?
+        true
+      end
+
+      def supports_insert_on_conflict?
+        firebird_version >= 40_000 # Firebird 4.0+ tiene UPDATE OR INSERT mejorado
+      end
+      alias supports_insert_on_duplicate_skip? supports_insert_on_conflict?
+      alias supports_insert_on_duplicate_update? supports_insert_on_conflict?
+
+      def supports_optimizer_hints?
+        true # Firebird tiene PLAN hints
+      end
+
+      def supports_common_table_expressions?
+        true
+      end
+
+      def supports_window_functions?
+        true # Firebird 3.0+
+      end
+
+      def supports_lazy_transactions?
+        false
+      end
+
+      def supports_advisory_locks?
+        false
+      end
+
+      def supports_virtual_columns?
+        true # COMPUTED BY columns
+      end
+
+      def supports_comments?
+        true
+      end
+
+      def supports_comments_in_create?
+        false
+      end
+
+      def supports_skip_locked?
+        return @supports_skip_locked unless @supports_skip_locked.nil?
+
+        @supports_skip_locked = firebird_version >= 50_000
+      end
+
+      def supports_nulls_not_distinct?
+        false
+      end
+
+      def supports_concurrent_connections?
+        true
+      end
+
+      # Características específicas de Firebird
+      def supports_time_zones?
+        return @supports_time_zones unless @supports_time_zones.nil?
+
+        begin
+          @supports_time_zones = firebird_version >= 40_000
+        rescue StandardError => e
+          puts "Error obteniendo soporte de time zones: #{e.message}"
+          @supports_time_zones = false
+        end
+      end
+
+      def supports_int128?
+        firebird_version >= 40_000
+      end
+
+      def supports_parallel_workers?
+        return @supports_parallel_workers unless @supports_parallel_workers.nil?
+
+        @supports_parallel_workers = firebird_version >= 50_000
+      end
+
+      def supports_profiler?
+        firebird_version >= 50_000
+      end
+
+      def firebird_version
+        return @firebird_version if @firebird_version
+
+        begin
+          version_result = query_value(<<~SQL.squish)
+            SELECT RDB$GET_CONTEXT('SYSTEM', 'ENGINE_VERSION')
+            FROM RDB$DATABASE
+          SQL
+
+          # Debug: Ver qué está devolviendo
+          puts "Version result: #{version_result.inspect}"
+          puts "Version result class: #{version_result.class}"
+
+          # Manejar diferentes tipos de retorno
+          version_string = if version_result.is_a?(Array)
+                             version_result.first.to_s
+                           elsif version_result.respond_to?(:to_s)
+                             version_result.to_s
+                           else
+                             "3.0.0" # Valor por defecto
+                           end
+
+          # Parse version string (e.g., "5.0.3" -> 50003)
+          if version_string =~ /(\d+)\.(\d+)\.(\d+)/
+            major = ::Regexp.last_match(1).to_i
+            minor = ::Regexp.last_match(2).to_i
+            patch = ::Regexp.last_match(3).to_i
+            @firebird_version = major * 10_000 + minor * 100 + patch
+          else
+            # Si no podemos parsear, usar un valor por defecto
+            puts "No se pudo parsear la versión: #{version_string}"
+            @firebird_version = 30_000 # Default to 3.0
+          end
+
+          puts "Firebird version parsed: #{@firebird_version}"
+          @firebird_version
+        rescue StandardError => e
+          puts "Error obteniendo versión: #{e.message}"
+          @firebird_version = 30_000 # Default to 3.0
+        end
+      end
+
+      def prefetch_primary_key?(_table_name = nil)
+        true # Firebird usa generadores/secuencias
+      end
+
+      def default_sequence_name(table_name, _primary_key)
+        "#{table_name}_seq"
+      end
+
+      # Métodos de utilidad
+      def case_sensitive_comparison(attribute, value)
+        # Firebird es case-sensitive por defecto
+        attribute.eq(value)
+      end
+
+      def case_insensitive_comparison(attribute, value)
+        # Para búsquedas case-insensitive usar UPPER
+        Arel::Nodes::NamedFunction.new("UPPER", [attribute]).eq(value.upcase)
+      end
+
+      def connection_alive?
+        active?
+      end
+
+      def column_for(table_name, column_name)
+        columns(table_name).find { |col| col.name == column_name.to_s }
+      end
+
+      def build_insert_sql(insert)
+        sql = +"INSERT INTO #{quote_table_name(insert.into)} "
+
+        if insert.values_list && insert.values_list.any?
+          columns = insert.values_list.first.keys
+          sql << "(#{columns.map { |col| quote_column_name(col) }.join(", ")})"
+          sql << " VALUES "
+
+          values = insert.values_list.map do |row|
+            "(#{columns.map { |col| quote(row[col]) }.join(", ")})"
+          end.join(", ")
+
+          sql << values
+        else
+          sql << "DEFAULT VALUES"
+        end
+
+        sql
+      end
+
+      def create_table_definition(name, **options)
+        Firebird::TableDefinition.new(
+          self,
+          name,
+          **options
+        )
+      end
+
+      def create_alter_table(name)
+        Firebird::AlterTable.new(create_table_definition(name))
+      end
+
+      def schema_creation
+        Firebird::SchemaCreation.new(self)
+      end
+
+      def add_index_options(table_name, column_name, **options)
+        column_names = Array(column_name)
+        index_name = options[:name] || index_name(table_name, column_names)
+
+        index_type = options[:unique] ? "UNIQUE" : ""
+        index_columns = column_names.map { |col| quote_column_name(col) }.join(", ")
+
+        [index_name, index_type, index_columns, options]
+      end
+
+      def index_name(table_name, options)
+        if options.is_a?(Hash) && options[:column]
+          columns = Array(options[:column])
+          "index_#{table_name}_on_#{columns.join("_and_")}"
+        elsif options.is_a?(Hash) && options[:name]
+          options[:name]
+        else
+          columns = Array(options)
+          "index_#{table_name}_on_#{columns.join("_and_")}"
+        end
+      end
+
+      def index_name_for_remove(table_name, column_name = nil, options = {})
+        return options[:name] if options.key?(:name)
+
+        raise ArgumentError, "No name or column specified" unless column_name
+
+        index_name(table_name, column: column_name)
+      end
+
+      def check_constraint_name(table_name, **options)
+        options.fetch(:name) do
+          expression = options.fetch(:expression) { options[:check] }
+          identifier = Digest::SHA256.hexdigest(expression).first(10)
+          "chk_#{table_name}_#{identifier}"
+        end
+      end
+
+      def lookup_cast_type_from_column(column)
+        lookup_cast_type(column.sql_type)
+      end
+
+      def query_value(sql, name = nil, allow_retry: false)
+        select_value(sql, name, allow_retry: allow_retry)
+      end
+
+      def select_value(sql, name = nil, allow_retry: false)
+        result = select_all(sql, name, allow_retry: allow_retry)
+
+        return nil unless result.respond_to?(:rows) && result.rows.any?
+        return nil unless result.rows.first&.any?
+
+        value = result.rows.first.first
+        unwrap_value(value)
+      end
+
+      def query_values(sql, name = nil)
+        select_values(sql, name)
+      end
+
+      def query(sql, name = nil)
+        result = select_all(sql, name)
+        result.rows
+      end
+
+      def current_savepoint_name
+        "active_record_#{object_id}"
+      end
+
+      def type_to_sql(type, limit: nil, precision: nil, scale: nil, **)
+        case type.to_s
+        when "integer"
+          case limit
+          when 1, 2 then "SMALLINT"
+          when 3, 4, nil then "INTEGER"
+          when 5..8 then "BIGINT"
+          else raise ArgumentError, "No integer type has byte size #{limit}"
+          end
+        when "string"
+          "VARCHAR(#{limit || 255})"
+        when "text"
+          "BLOB SUB_TYPE TEXT"
+        when "binary"
+          "BLOB SUB_TYPE BINARY"
+        when "float"
+          "FLOAT"
+        when "decimal", "numeric"
+          if precision
+            if scale
+              "NUMERIC(#{precision},#{scale})"
+            else
+              "NUMERIC(#{precision})"
+            end
+          else
+            "NUMERIC"
+          end
+        when "datetime", "timestamp"
+          "TIMESTAMP"
+        when "time"
+          "TIME"
+        when "date"
+          "DATE"
+        when "boolean"
+          "BOOLEAN"
+        when "bigint"
+          "BIGINT"
+        when "int128"
+          supports_int128? ? "INT128" : "BIGINT"
+        when "timestamptz"
+          supports_time_zones? ? "TIMESTAMP WITH TIME ZONE" : "TIMESTAMP"
+        when "timetz"
+          supports_time_zones? ? "TIME WITH TIME ZONE" : "TIME"
+        else
+          super
+        end
+      end
+
+      def extract_value_from_default(default)
+        return nil if default.nil?
+
+        # Firebird retorna defaults como "DEFAULT 'valor'" o "DEFAULT valor"
+        case default
+        when /^DEFAULT\s+'(.*)'/m
+          ::Regexp.last_match(1).gsub("''", "'")
+        when /^DEFAULT\s+(.*)/m
+          ::Regexp.last_match(1)
+        else
+          default
+        end
+      end
+
+      private
+
+      def unwrap_value(value)
+        value = value.first while value.is_a?(Array) && value.length == 1
+        value
+      end
+
+      def translate_exception(exception, message:, sql:, binds:)
+        case exception
+        when ::Fb::Error
+          if exception.message.include?("violation of PRIMARY")
+            ActiveRecord::RecordNotUnique.new(message, sql: sql, binds: binds, connection_pool: @pool)
+          elsif exception.message.include?("violation of FOREIGN KEY")
+            ActiveRecord::InvalidForeignKey.new(message, sql: sql, binds: binds, connection_pool: @pool)
+          elsif exception.message.include?("CHECK constraint")
+            ActiveRecord::StatementInvalid.new(message, sql: sql, binds: binds, connection_pool: @pool)
+          elsif exception.message.include?("lock conflict")
+            ActiveRecord::LockWaitTimeout.new(message, sql: sql, binds: binds, connection_pool: @pool)
+          else
+            ActiveRecord::StatementInvalid.new(message, sql: sql, binds: binds, connection_pool: @pool)
+          end
+        else
+          super
+        end
+      end
+
+      def initialize_type_map(m = type_map)
+        super
+        register_class_with_limit m, /varchar/i, Type::String
+        register_class_with_limit m, /char/i, Type::String
+        register_class_with_precision m, /numeric/i, Type::Decimal
+        register_class_with_precision m, /decimal/i, Type::Decimal
+
+        m.register_type "boolean", Type::Boolean.new
+        m.register_type "blob sub_type text", Type::Text.new
+        m.register_type "blob sub_type binary", Type::Binary.new
+        m.register_type "timestamp", Type::DateTime.new
+        m.register_type "timestamp with time zone", Type::DateTime.new if supports_time_zones?
+        m.register_type "date", Type::Date.new
+        m.register_type "time", Type::Time.new
+        m.register_type "time with time zone", Type::Time.new if supports_time_zones?
+        m.register_type "smallint", Type::Integer.new(limit: 2)
+        m.register_type "integer", Type::Integer.new(limit: 4)
+        m.register_type "bigint", Type::BigInteger.new(limit: 8)
+        m.register_type "int128", Type::BigInteger.new if supports_int128?
+        m.register_type "float", Type::Float.new
+        m.register_type "double precision", Type::Float.new
+      end
     end
   end
-
-  private
-
-  def database_path(config)
-    if config[:host]
-      "#{config[:host]}:#{config[:database]}"
-    end
-  end
-
 end

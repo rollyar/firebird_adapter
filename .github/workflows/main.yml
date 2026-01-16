@@ -1,0 +1,58 @@
+name: Ruby
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Ruby ${{ matrix.ruby }}
+    strategy:
+      matrix:
+        ruby:
+          - '3.3.6'
+
+    services:
+      firebird:
+        image: firebirdsql/firebird:5.0.0
+        env:
+          ISC_PASSWORD: masterkey
+          FIREBIRD_DATABASE: test.fdb
+          FIREBIRD_USER: tester
+          FIREBIRD_PASSWORD: test_password
+        ports:
+          - 3050:3050
+        options: >-
+          --health-cmd="gstat -user tester -password test_password test.fdb"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: ${{ matrix.ruby }}
+        bundler-cache: true
+
+    - name: Install Firebird dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y firebird-dev libfbclient2 firebird3.0-utils
+
+    - name: Wait for Firebird to be ready
+      run: sleep 10
+
+    - name: Run tests
+      env:
+        DATABASE_URL: firebird://tester:test_password@localhost:3050//firebird/data/test.fdb
+      run: bundle exec rake
+
+    - name: Run specs
+      env:
+        DATABASE_URL: firebird://tester:test_password@localhost:3050//firebird/data/test.fdb
+      run: bundle exec rspec

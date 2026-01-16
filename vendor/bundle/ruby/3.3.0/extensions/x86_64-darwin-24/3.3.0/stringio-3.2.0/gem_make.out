@@ -1,0 +1,19 @@
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/stringio-3.2.0/ext/stringio
+/Users/rolly/.rvm/rubies/ruby-3.3.6/bin/ruby extconf.rb
+checking for rb_io_mode_t in ruby/io.h... no
+creating Makefile
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/stringio-3.2.0/ext/stringio
+make DESTDIR\= sitearchdir\=./.gem.20260116-16431-jb2073 sitelibdir\=./.gem.20260116-16431-jb2073 clean
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/stringio-3.2.0/ext/stringio
+make DESTDIR\= sitearchdir\=./.gem.20260116-16431-jb2073 sitelibdir\=./.gem.20260116-16431-jb2073
+compiling stringio.c
+linking shared-object stringio.bundle
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/stringio-3.2.0/ext/stringio
+make DESTDIR\= sitearchdir\=./.gem.20260116-16431-jb2073 sitelibdir\=./.gem.20260116-16431-jb2073 install
+/usr/local/opt/coreutils/bin/ginstall -c -m 0755 stringio.bundle ./.gem.20260116-16431-jb2073
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/stringio-3.2.0/ext/stringio
+make DESTDIR\= sitearchdir\=./.gem.20260116-16431-jb2073 sitelibdir\=./.gem.20260116-16431-jb2073 clean

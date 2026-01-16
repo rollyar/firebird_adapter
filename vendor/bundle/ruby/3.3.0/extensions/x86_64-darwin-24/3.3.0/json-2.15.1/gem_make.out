@@ -1,0 +1,25 @@
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/json-2.15.1/ext/json/ext/parser
+/Users/rolly/.rvm/rubies/ruby-3.3.6/bin/ruby extconf.rb
+checking for rb_enc_interned_str() in ruby/encoding.h... yes
+checking for rb_hash_new_capa() in ruby.h... yes
+checking for rb_hash_bulk_insert() in ruby.h... yes
+checking for strnlen() in string.h... yes
+checking for whether -std=c99 is accepted as CFLAGS... yes
+checking for x86intrin.h... yes
+checking for cpuid.h... yes
+creating Makefile
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/json-2.15.1/ext/json/ext/parser
+make DESTDIR\= sitearchdir\=./.gem.20251014-17632-6bmhcj sitelibdir\=./.gem.20251014-17632-6bmhcj clean
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/json-2.15.1/ext/json/ext/parser
+make DESTDIR\= sitearchdir\=./.gem.20251014-17632-6bmhcj sitelibdir\=./.gem.20251014-17632-6bmhcj
+compiling parser.c
+linking shared-object json/ext/parser.bundle
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/json-2.15.1/ext/json/ext/parser
+make DESTDIR\= sitearchdir\=./.gem.20251014-17632-6bmhcj sitelibdir\=./.gem.20251014-17632-6bmhcj install
+/usr/local/opt/coreutils/bin/ginstall -c -m 0755 parser.bundle ./.gem.20251014-17632-6bmhcj/json/ext
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/json-2.15.1/ext/json/ext/parser
+make DESTDIR\= sitearchdir\=./.gem.20251014-17632-6bmhcj sitelibdir\=./.gem.20251014-17632-6bmhcj clean

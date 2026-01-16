@@ -4,8 +4,20 @@ ActiveRecord Firebird Adapter for Rails 5, 6 and 7.
 
 According to our new versioning strategy use:
 - firebird_adapter 7.x for Rails 7.x :)
-- firebird_adapter 6.x for Rails 6.x  
+- firebird_adapter 6.x for Rails 6.x
 - firebird_adapter 5.x for Rails from 5.x
+
+# Desarrollar localmente
+bundle install
+bundle exec rake spec
+
+# Probar la gema localmente en otro proyecto
+# En el proyecto de prueba:
+gem 'firebird_adapter', path: '../firebird_adapter'
+
+# Construir y probar la gema
+gem build firebird_adapter.gemspec
+gem install ./firebird_adapter-7.1.0.gem
 
 
 ## Installation

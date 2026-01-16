@@ -1,0 +1,19 @@
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/debug-1.11.0/ext/debug
+/Users/rolly/.rvm/rubies/ruby-3.3.6/bin/ruby extconf.rb
+creating Makefile
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/debug-1.11.0/ext/debug
+make DESTDIR\= sitearchdir\=./.gem.20251115-2454-zmuqeh sitelibdir\=./.gem.20251115-2454-zmuqeh clean
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/debug-1.11.0/ext/debug
+make DESTDIR\= sitearchdir\=./.gem.20251115-2454-zmuqeh sitelibdir\=./.gem.20251115-2454-zmuqeh
+compiling debug.c
+compiling iseq_collector.c
+linking shared-object debug/debug.bundle
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/debug-1.11.0/ext/debug
+make DESTDIR\= sitearchdir\=./.gem.20251115-2454-zmuqeh sitelibdir\=./.gem.20251115-2454-zmuqeh install
+/usr/local/opt/coreutils/bin/ginstall -c -m 0755 debug.bundle ./.gem.20251115-2454-zmuqeh/debug
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/debug-1.11.0/ext/debug
+make DESTDIR\= sitearchdir\=./.gem.20251115-2454-zmuqeh sitelibdir\=./.gem.20251115-2454-zmuqeh clean
