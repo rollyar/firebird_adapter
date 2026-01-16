@@ -11,7 +11,58 @@ require "active_record/connection_adapters/firebird/column"
 require "active_record/connection_adapters/firebird/type_metadata"
 
 module ActiveRecord
-  module ConnectionAdapters
+  module ConnectionAdapters # :nodoc:
+    # = Active Record Firebird Adapter
+    #
+    # Active Record supports multiple database systems. AbstractAdapter and
+    # related classes form the abstraction layer which makes it possible to
+    # use any of these systems to back a RoR application.
+    #
+    # Currently FirebirdAdapter supports Firebird 2.5+, 3.0+ using the
+    # fb gem (https://github.com/rowland/fb).
+    #
+    # Options:
+    #
+    # * <tt>:host</tt> - Database host name. Default: localhost.
+    # * <tt>:port</tt> - Database port. Default: 3050.
+    # * <tt>:database</tt> - Database path or name.
+    # * <tt>:username</tt> - Database username.
+    # * <tt>:password</tt> - Database password.
+    # * <tt>:charset</tt> - Database character set (UTF8, ISO8859_1, etc.).
+    # * <tt>:role</tt> - Database role (optional).
+    class Version
+      include Comparable
+
+      attr_reader :full_version_string, :version
+
+      def initialize(version_number, version_string = nil)
+        @version = version_number.to_s.scan(/(\d{2})(\d{2})(\d{3})/).first.map(&:to_i)
+        @full_version_string = version_string
+      end
+
+      def <=>(other)
+        return unless other.respond_to?(:version)
+
+        @version <=> other.version
+      end
+
+      def to_s
+        "#{@version[0]}.#{@version[1]}.#{@version[2]}"
+      end
+
+      def major
+        @version[0]
+      end
+
+      def minor
+        @version[1]
+      end
+
+      def patch
+        @version[2]
+      end
+    end
+
     class FirebirdAdapter < AbstractAdapter
       ADAPTER_NAME = "Firebird"
       DEFAULT_ENCODING = "UTF8"
@@ -49,7 +100,7 @@ module ActiveRecord
       }.freeze
 
       def initialize(config)
-        super(config)
+        super
         @config = config
         @connection_parameters = config.symbolize_keys
 
@@ -109,7 +160,7 @@ module ActiveRecord
       alias reconnect reconnect!
 
       def transaction_open?
-         @connection&.transaction_started
+        @connection&.transaction_started
       end
       alias transaction_active? transaction_open?
 
@@ -283,11 +334,12 @@ module ActiveRecord
             major = ::Regexp.last_match(1).to_i
             minor = ::Regexp.last_match(2).to_i
             patch = ::Regexp.last_match(3).to_i
-            @firebird_version = major * 10_000 + minor * 100 + patch
+
+            @firebird_version = (major * 10_000) + (minor * 100) + patch
+            @firebird_version_string = version_string
           else
-            # Si no podemos parsear, usar un valor por defecto
-            puts "No se pudo parsear la versión: #{version_string}"
             @firebird_version = 30_000 # Default to 3.0
+            @firebird_version_string = "3.0.0" # Default to 3.0
           end
 
           puts "Firebird version parsed: #{@firebird_version}"
@@ -295,11 +347,99 @@ module ActiveRecord
         rescue StandardError => e
           puts "Error obteniendo versión: #{e.message}"
           @firebird_version = 30_000 # Default to 3.0
+          @firebird_version_string = "3.0.0" # Default to 3.0
         end
       end
 
       def prefetch_primary_key?(_table_name = nil)
         true # Firebird usa generadores/secuencias
+      end
+
+      # Rails 7.2+ compatibility methods
+      def firebird_version_string
+        @firebird_version_string || begin
+          query_value("SELECT RDB$GET_CONTEXT('SYSTEM', 'ENGINE_VERSION') FROM RDB$DATABASE")
+        rescue StandardError
+          "3.0.0" # Default to 3.0
+        end
+      end
+
+      def database_version
+        Version.new(@firebird_version, firebird_version_string)
+      end
+
+      def supports_explain?
+        true # Firebird supports EXPLAIN PLAN
+      end
+
+      def explain(arel, binds = [])
+        sql = to_sql(arel, binds)
+        execute_and_clear("EXPLAIN PLAN #{sql}", "SCHEMA", binds)
+      end
+
+      def supports_transaction_isolation?
+        true # Firebird supports transaction isolation levels
+      end
+
+      def transaction_isolation_level_options
+        %i[read_committed repeatable_read serializable read_uncommitted]
+      end
+
+      def supports_deferrable_constraints?
+        false # Firebird doesn't support deferrable constraints
+      end
+
+      def supports_datetime_with_precision?
+        firebird_version >= 40_000 # Firebird 4.0+ supports fractional seconds
+      end
+
+      def supports_timezones?
+        firebird_version >= 40_000 # Firebird 4.0+ supports time zone types
+      end
+
+      def supports_expression_index?
+        true # Firebird supports functional indexes
+      end
+
+      def supports_virtual_columns?
+        true # Firebird supports COMPUTED BY columns
+      end
+
+      def supports_identity_columns?
+        firebird_version >= 30_000 # Firebird 3.0+ supports IDENTITY
+      end
+
+      def supports_json?
+        true # Via BLOB SUB_TYPE TEXT
+      end
+
+      def supports_uuid?
+        true # Via CHAR(16) CHARACTER SET OCTETS
+      end
+
+      def supports_insert_on_duplicate_skip?
+        false # Firebird doesn't support UPDATE OR INSERT syntax
+      end
+
+      def supports_multi_insert?
+        true # Firebird 3.0+ supports batch operations
+      end
+
+      def supports_concurrent_index?
+        false # Firebird doesn't support CREATE INDEX CONCURRENTLY
+      end
+
+      def supports_foreign_keys_in_create?
+        true # Firebird supports foreign keys in CREATE TABLE
+      end
+
+      def return_value_after_insert?(column)
+        # Check if column is an IDENTITY column via computed_source or sql_type
+        return true if column.respond_to?(:computed_source) && column.computed_source&.include?("IDENTITY")
+        return true if column.sql_type&.include?("IDENTITY")
+        return true if column.respond_to?(:auto_populated?) && column.auto_populated?
+
+        false
       end
 
       def default_sequence_name(table_name, _primary_key)
@@ -326,7 +466,7 @@ module ActiveRecord
       end
 
       def build_insert_sql(insert)
-        sql = +"INSERT INTO #{quote_table_name(insert.into)} "
+        sql = "INSERT INTO #{quote_table_name(insert.into)} "
 
         if insert.values_list && insert.values_list.any?
           columns = insert.values_list.first.keys

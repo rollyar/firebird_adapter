@@ -15,7 +15,7 @@ module ActiveRecord
             end
           end
         rescue ::Fb::Error => e
-          raise translate_exception(e, sql: sql, binds: binds)
+          raise translate_exception(e, message: "#{e.class.name}: #{e.message}", sql: sql, binds: binds)
         end
 
         def execute(sql, name = nil, async: false)

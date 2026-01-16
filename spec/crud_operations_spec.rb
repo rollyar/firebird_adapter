@@ -10,6 +10,11 @@ RSpec.describe "CRUD Operations" do
       # Debug: check what columns exist
       columns = SisTest.columns
       puts "Available columns: #{columns.map(&:name).join(", ")}"
+      puts "Primary key: #{SisTest.primary_key}"
+      puts "Column details:"
+      columns.each do |col|
+        puts "  #{col.name}: #{col.sql_type} (primary: #{col.name == SisTest.primary_key}, auto_populated: #{ActiveRecord::Base.connection.return_value_after_insert?(col)})"
+      end
 
       record = SisTest.create!(
         FIELD_VARCHAR: "Test String",
