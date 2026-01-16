@@ -1,0 +1,19 @@
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/fb-0.10.0
+/Users/rolly/.rvm/rubies/ruby-3.3.6/bin/ruby extconf.rb
+checking for isc_attach_database() in -lfbclient... yes
+creating Makefile
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/fb-0.10.0
+make DESTDIR\= sitearchdir\=./.gem.20260116-74315-ayptzf sitelibdir\=./.gem.20260116-74315-ayptzf clean
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/fb-0.10.0
+make DESTDIR\= sitearchdir\=./.gem.20260116-74315-ayptzf sitelibdir\=./.gem.20260116-74315-ayptzf
+compiling fb.c
+linking shared-object fb.bundle
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/fb-0.10.0
+make DESTDIR\= sitearchdir\=./.gem.20260116-74315-ayptzf sitelibdir\=./.gem.20260116-74315-ayptzf install
+/usr/local/opt/coreutils/bin/ginstall -c -m 0755 fb.bundle ./.gem.20260116-74315-ayptzf
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/fb-0.10.0
+make DESTDIR\= sitearchdir\=./.gem.20260116-74315-ayptzf sitelibdir\=./.gem.20260116-74315-ayptzf clean

@@ -1,0 +1,22 @@
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/byebug-12.0.0/ext/byebug
+/Users/rolly/.rvm/rubies/ruby-3.3.6/bin/ruby extconf.rb
+creating Makefile
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/byebug-12.0.0/ext/byebug
+make DESTDIR\= sitearchdir\=./.gem.20260116-74315-9i5i4t sitelibdir\=./.gem.20260116-74315-9i5i4t clean
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/byebug-12.0.0/ext/byebug
+make DESTDIR\= sitearchdir\=./.gem.20260116-74315-9i5i4t sitelibdir\=./.gem.20260116-74315-9i5i4t
+compiling breakpoint.c
+compiling byebug.c
+compiling context.c
+compiling locker.c
+compiling threads.c
+linking shared-object byebug/byebug.bundle
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/byebug-12.0.0/ext/byebug
+make DESTDIR\= sitearchdir\=./.gem.20260116-74315-9i5i4t sitelibdir\=./.gem.20260116-74315-9i5i4t install
+/usr/local/opt/coreutils/bin/ginstall -c -m 0755 byebug.bundle ./.gem.20260116-74315-9i5i4t/byebug
+
+current directory: /Users/rolly/Documents/rails/production/firebird_adapter/vendor/bundle/ruby/3.3.0/gems/byebug-12.0.0/ext/byebug
+make DESTDIR\= sitearchdir\=./.gem.20260116-74315-9i5i4t sitelibdir\=./.gem.20260116-74315-9i5i4t clean
