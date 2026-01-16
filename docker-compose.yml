@@ -1,27 +1,91 @@
+version: '3.8'
+
 services:
   gem_development:
     build: .
     stdin_open: true
     tty: true
     depends_on:
-      - firebird_test
+      - firebird3
+      - firebird4
+      - firebird5
     volumes:
       - .:/app
       - bundle_cache:/usr/local/bundle
     working_dir: /app
     environment:
       - BUNDLE_PATH=/usr/local/bundle
-
-  firebird_test:
-    image: firebirdsql/firebird:latest
-    environment:
-      - FIREBIRD_DATABASE=test.fdb
-      - FIREBIRD_USER=test_user
-      - FIREBIRD_PASSWORD=test_password
       - ISC_PASSWORD=masterkey
+      - FIREBIRD_DATABASE=/firebird/data/test.fdb
+
+  firebird3:
+    image: jacobalberty/firebird:3.0
+    container_name: firebird3
+    environment:
+      - ISC_PASSWORD=masterkey
+      - FIREBIRD_DATABASE=/firebird/data/test.fdb
+    ports:
+      - "3050:3050"
     volumes:
-      - firebird_data:/firebird/data
+      - firebird3_data:/firebird/data
+      - ./spec/db:/firebird/data
+    networks:
+      - firebird_net
+    restart: unless-stopped
+
+  firebird4:
+    image: jacobalberty/firebird:4.0
+    container_name: firebird4
+    environment:
+      - ISC_PASSWORD=masterkey
+      - FIREBIRD_DATABASE=/firebird/data/test.fdb
+    ports:
+      - "3051:3050"
+    volumes:
+      - firebird4_data:/firebird/data
+      - ./spec/db:/firebird/data
+    networks:
+      - firebird_net
+    restart: unless-stopped
+
+  firebird5:
+    image: jacobalberty/firebird:5.0
+    container_name: firebird5
+    environment:
+      - ISC_PASSWORD=masterkey
+      - FIREBIRD_DATABASE=/firebird/data/test.fdb
+    ports:
+      - "3052:3050"
+    volumes:
+      - firebird5_data:/firebird/data
+      - ./spec/db:/firebird/data
+    networks:
+      - firebird_net
+    restart: unless-stopped
+
+  # Optional: PostgreSQL for comparison testing
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=test
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - firebird_net
+    restart: unless-stopped
 
 volumes:
   bundle_cache:
-  firebird_data:
+  firebird3_data:
+  firebird4_data:
+  firebird5_data:
+  postgres_data:
+
+networks:
+  firebird_net:
+    driver: bridge

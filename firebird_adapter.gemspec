@@ -12,20 +12,17 @@ Gem::Specification.new do |spec|
   spec.summary       = "ActiveRecord adapter for Firebird"
   spec.description   = "Enables Rails applications to connect to Firebird databases."
   spec.license       = "MIT"
-  spec.required_ruby_version = ">= 3.2"
+  spec.required_ruby_version = ">= 3.3.6"
 
   spec.files = Dir["lib/**/*"]
   spec.executables   = spec.files.grep(%r{^bin/}) { |f| File.basename(f) }
   spec.test_files    = spec.files.grep(%r{^(test|spec|features)/})
   spec.require_paths = ["lib"]
 
-  spec.required_ruby_version = ">= 3.2"
-
-  spec.add_dependency "fb", "~> 0.10.0"
+  spec.add_dependency "fb", "~> 0.9.4"
   spec.add_development_dependency "bundler", ">= 2.5.2"
   spec.add_development_dependency "database_cleaner", ">= 2.1"
   spec.add_development_dependency "pry-meta", ">= 0.0.10"
-  spec.add_development_dependency "rake", ">= 13.0"
-  spec.add_dependency "activerecord", "~> 7.2.3"
+  spec.add_dependency "activerecord", ">= 7.2.0", "< 8.0"
   spec.add_development_dependency "rspec", "~> 3.0"
 end
