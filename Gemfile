@@ -11,5 +11,4 @@ gem "rspec", "~> 3.0"
 
 gem "rubocop", "~> 1.21"
 
-# Use local fb fork to support Firebird 3/4/5 types
-gem "fb",   "~> 0.10.0"
+gem "fb",   "~> 0.9.4"
