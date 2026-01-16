@@ -177,6 +177,12 @@ module ActiveRecord
                          "FLOAT"
                        when 27
                          "DOUBLE PRECISION"
+                       when 37 # DECFLOAT (Firebird 4.0+)
+                         if field_scale && field_scale > 0
+                           "DECFLOAT(#{field_scale})"
+                         else
+                           "DECFLOAT(16)"
+                         end
                        else
                          "VARCHAR(#{field_length || 255})"
                        end
@@ -309,7 +315,11 @@ module ActiveRecord
         end
 
         def drop_table(table_name, if_exists: false, **_options)
-          execute("DROP TABLE #{quote_table_name(table_name)}")
+          if if_exists && table_exists?(table_name)
+            execute("DROP TABLE #{quote_table_name(table_name)}")
+          elsif !if_exists
+            execute("DROP TABLE #{quote_table_name(table_name)}")
+          end
         rescue ActiveRecord::StatementInvalid
           raise unless if_exists
         end
