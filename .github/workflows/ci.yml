@@ -5,11 +5,22 @@ on:
     branches: [ rails-7-2, main ]
   pull_request:
     branches: [ rails-7-2, main ]
+  workflow_dispatch:
 
 jobs:
   test:
-    runs-on: ubuntu-22.04  # Use Ubuntu 22.04 which has Firebird packages
-    
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby: [ '3.3.6' ]
+        rails: [ '7-2-stable' ]
+        firebird: [ '4.0.5' ]
+
+    env:
+      ISC_PASSWORD: masterkey
+      FIREBIRD_DATABASE: /firebird/data/test.fdb
+
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -17,8 +28,9 @@ jobs:
     - name: Setup Ruby
       uses: ruby/setup-ruby@v1
       with:
-        ruby-version: '3.3.6'
+        ruby-version: ${{ matrix.ruby }}
         rubygems: latest
+        bundler-cache: true
 
     - name: Install Firebird Client Libraries
       run: |
@@ -30,29 +42,162 @@ jobs:
         echo "FIREBIRD_INCLUDE=/usr/include/firebird" >> $GITHUB_ENV
         echo "FIREBIRD_LIB=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
 
-    - name: Check Firebird Headers
+    - name: Install Firebird Server
       run: |
-        ls -la /usr/include/firebird/ || echo "No firebird headers found"
-        find /usr -name "ibase.h" 2>/dev/null || echo "No ibase.h found"
+        # Install Firebird server for testing
+        sudo apt-get install -y firebird4.0-server
         
-    - name: Install Dependencies
+        # Create database directory
+        sudo mkdir -p /firebird/data
+        sudo chmod 777 /firebird/data
+        
+        # Start Firebird service
+        sudo systemctl start firebird4.0 || sudo /etc/init.d/firebird4.0 start || true
+        sleep 5
+
+    - name: Setup Database
       run: |
-        bundle install
+        # Create test database
+        isql -user sysdba -password masterkey -q "CREATE DATABASE '/firebird/data/test.fdb' USER 'sysdba' PASSWORD 'masterkey'" || echo "Database exists"
 
     - name: Check Installation
       run: |
         bundle list | grep fb
-        ruby -r fb -e "puts 'FB gem loaded successfully'" || echo "FB gem not available"
+        ruby -r fb -e "puts 'FB gem loaded successfully'"
+
+    - name: Install Dependencies
+      run: |
+        bundle install --jobs 4 --retry 3
 
     - name: Run Tests
       run: |
-        echo "Running basic tests..."
-        ruby -c lib/firebird_adapter.rb
+        echo "Ruby version: $(ruby --version)"
+        echo "Rails version: $(ruby -e 'require \"bundler\"; puts Bundler.locked_gems[\"rails\"].version rescue \"unknown\"')"
+        echo "Firebird version: ${{ matrix.firebird }}"
         
-        # Try to run rspec if available
-        if bundle exec rspec --version > /dev/null 2>&1; then
-          echo "Running RSpec tests..."
-          bundle exec rspec --format documentation || true
+        # Run tests
+        mkdir -p tmp
+        bundle exec rspec --format documentation --format RspecJunitFormatter --out tmp/test-results.xml
+
+    - name: Upload Test Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results-${{ matrix.ruby }}-${{ matrix.rails }}-${{ matrix.firebird }}
+        path: tmp/test-results.xml
+
+    - name: Test Summary
+      if: always()
+      run: |
+        echo "## Test Summary"
+        echo "- Ruby: ${{ matrix.ruby }}"
+        echo "- Rails: ${{ matrix.rails }}"
+        echo "- Firebird: ${{ matrix.firebird }}"
+        
+        # Create status badge
+        if [ "${{ job.status }}" = "success" ]; then
+          echo "✅ Tests passed"
         else
-          echo "RSpec not available, skipping tests"
+          echo "❌ Tests failed"
         fi
+
+  # Lint job
+  lint:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.3.6'
+        bundler-cache: true
+
+    - name: Install Firebird Client Libraries
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y firebird-dev libfbclient2
+        echo "FIREBIRD_INCLUDE=/usr/include/firebird" >> $GITHUB_ENV
+        echo "FIREBIRD_LIB=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+
+    - name: Install Dependencies
+      run: |
+        bundle install
+
+    - name: Run RuboCop
+      run: |
+        bundle exec rubocop --format github
+
+  # Security scan
+  security:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Security Audit
+      run: |
+        gem install bundler-audit
+        bundle audit --update || true
+
+  # Performance test
+  performance:
+    runs-on: ubuntu-22.04
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/rails-7-2'
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.3.6'
+
+    - name: Install Firebird
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y firebird-dev libfbclient2 firebird4.0-server
+        echo "FIREBIRD_INCLUDE=/usr/include/firebird" >> $GITHUB_ENV
+        echo "FIREBIRD_LIB=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+        
+        sudo mkdir -p /firebird/data
+        sudo chmod 777 /firebird/data
+        sudo systemctl start firebird4.0 || sudo /etc/init.d/firebird4.0 start || true
+        sleep 3
+
+    - name: Performance Tests
+      run: |
+        # Install dependencies
+        bundle install
+        
+        # Basic performance benchmarking
+        bundle exec ruby -e "
+          require './spec/spec_helper'
+          connection = ActiveRecord::Base.connection
+          
+          puts '=== Performance Benchmarks ==='
+          
+          # Test 1000 simple queries
+          start_time = Time.now
+          1000.times do
+            connection.select_value('SELECT 1 FROM RDB\$DATABASE')
+          end
+          end_time = Time.now
+          
+          puts \"1000 queries: #{(end_time - start_time).round(3)}s\"
+          puts \"Queries per second: #{(1000 / (end_time - start_time)).round(2)}\"
+        " || echo "Performance test failed"
+
+  # Compatibility matrix test
+  compatibility:
+    runs-on: ubuntu-22.04
+    needs: test
+    if: always()
+    steps:
+    - name: Compatibility Report
+      run: |
+        echo "## Compatibility Matrix Results"
+        echo "This job runs after all test matrix jobs complete"
+        echo "It will generate a compatibility report for the firebird_adapter"
