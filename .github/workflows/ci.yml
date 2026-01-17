@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  # Use Ubuntu 22.04 which has Firebird packages
     
     steps:
     - name: Checkout
@@ -24,7 +24,7 @@ jobs:
       run: |
         # Install Firebird client development libraries
         sudo apt-get update
-        sudo apt-get install -y firebird3.0-dev libfbclient2
+        sudo apt-get install -y firebird-dev libfbclient2
         
         # Set environment variables for fb gem compilation
         echo "FIREBIRD_INCLUDE=/usr/include/firebird" >> $GITHUB_ENV
@@ -37,7 +37,7 @@ jobs:
         
     - name: Install Dependencies
       run: |
-        bundle install --verbose
+        bundle install
 
     - name: Check Installation
       run: |
