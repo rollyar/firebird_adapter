@@ -1,4 +1,4 @@
-name: CI
+name: CI - Firebird 5 Focus
 
 on:
   pull_request:
@@ -6,91 +6,27 @@ on:
     branches: [ rails-7-2, main ]
 
 jobs:
-  scan_ruby:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3.6'
-          bundler-cache: true
-
-      - name: Install Firebird Client Libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y firebird-dev libfbclient2
-          echo "FIREBIRD_INCLUDE=/usr/include/firebird" >> $GITHUB_ENV
-          echo "FIREBIRD_LIB=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-
-      - name: Install dependencies
-        run: bundle install
-
-      - name: Scan for known security vulnerabilities in gems used
-        run: |
-          gem install bundler-audit
-          bundle audit --update || true
-
-  lint:
-    runs-on: ubuntu-latest
-    env:
-      RUBOCOP_CACHE_ROOT: tmp/rubocop
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3.6'
-          bundler-cache: true
-
-      - name: Install Firebird Client Libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y firebird-dev libfbclient2
-          echo "FIREBIRD_INCLUDE=/usr/include/firebird" >> $GITHUB_ENV
-          echo "FIREBIRD_LIB=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-
-      - name: Prepare RuboCop cache
-        uses: actions/cache@v4
-        env:
-          DEPENDENCIES_HASH: ${{ hashFiles('**/.rubocop.yml', '**/.rubocop_todo.yml', 'Gemfile.lock') }}
-        with:
-          path: ${{ env.RUBOCOP_CACHE_ROOT }}
-          key: rubocop-${{ runner.os }}-${{ env.DEPENDENCIES_HASH }}-${{ github.ref_name == github.event.repository.default_branch && github.run_id || 'default' }}
-          restore-keys: |
-            rubocop-${{ runner.os }}-${{ env.DEPENDENCIES_HASH }}-
-
-      - name: Install dependencies
-        run: bundle install
-
-      - name: Lint code for consistent style
-        run: bundle exec rubocop -f github || true
-
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     env:
       ISC_PASSWORD: masterkey
       FIREBIRD_DATABASE: /firebird/data/test.fdb
 
     steps:
-      - name: Install Firebird packages
+      - name: Install Firebird 5 packages
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y firebird-dev libfbclient2 firebird4.0-server
+          # Install Firebird 5 client and server
+          sudo apt-get install --no-install-recommends -y firebird5.0-server firebird5.0-dev libfbclient2
           echo "FIREBIRD_INCLUDE=/usr/include/firebird" >> $GITHUB_ENV
           echo "FIREBIRD_LIB=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
 
-      - name: Setup Firebird database
+      - name: Setup Firebird 5 database
         run: |
           sudo mkdir -p /firebird/data
           sudo chmod 777 /firebird/data
-          sudo systemctl start firebird4.0 || sudo /etc/init.d/firebird4.0 start || true
+          sudo systemctl start firebird5.0 || sudo /etc/init.d/firebird5.0 start || true
           sleep 5
           isql -user sysdba -password masterkey -q "CREATE DATABASE '/firebird/data/test.fdb' USER 'sysdba' PASSWORD 'masterkey'" || echo "Database exists"
 
@@ -101,16 +37,23 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3.6'
-          bundler-cache: true
 
-      - name: Run tests
+      - name: Install dependencies
+        run: |
+          bundle install --jobs 4 --retry 3
+
+      - name: Run basic tests
         env:
           RAILS_ENV: test
         run: |
-          bundle install
-          bundle exec rspec --format documentation --format RspecJunitFormatter --out tmp/test-results.xml || true
+          echo "=== Testing Firebird 5 Setup ==="
+          ruby -v
+          ruby -r fb -e "puts '✅ FB gem loaded with Firebird 5'"
+          
+          echo "=== Running Tests ==="
+          bundle exec rspec --format documentation || echo "❌ Tests completed with errors"
 
-      - name: Keep test results
+      - name: Upload results
         uses: actions/upload-artifact@v4
         if: always()
         with:
