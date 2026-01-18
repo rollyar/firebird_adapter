@@ -20,7 +20,7 @@ jobs:
           # CRUCIAL: Instalamos esto para poder usar 'add-apt-repository'
           sudo apt-get install -y software-properties-common build-essential wget
 
-       - name: Install Firebird
+      - name: Install Firebird
         run: |
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y firebird-server firebird-dev libfbclient2
 
