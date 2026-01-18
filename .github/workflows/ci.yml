@@ -30,12 +30,11 @@ jobs:
 
       - name: Start Firebird Service
         run: |
-
-          sudo systemctl enable firebird-super || sudo systemctl enable firebird-server
-          sudo systemctl start firebird-super || sudo systemctl start firebird-server
-          sleep 5
-          # Verificar que el proceso existe
-          pgrep fb_inet_server || pgrep fbserver
+          # Iniciamos el servicio oficial
+          sudo systemctl enable firebird3.0-super || sudo systemctl enable firebird3.0-server
+          sudo systemctl start firebird3.0-super || sudo systemctl start firebird3.0-server
+          # Verificamos que esté corriendo
+          sudo systemctl status firebird3.0-super || sudo systemctl status firebird3.0-server
 
       - name: Setup Test Database
         run: |
