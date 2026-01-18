@@ -1,4 +1,4 @@
-name: CI - Firebird 5 via Script (IBSurgeon)
+name: CI - Firebird 4 (via PPA)
 
 on:
   pull_request:
@@ -7,47 +7,51 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04 # Usamos 22.04 por estabilidad, pero el PPA trae FB4 igual
 
     env:
       ISC_PASSWORD: masterkey
       FIREBIRD_DATABASE: /firebird/data/test.fdb
 
     steps:
-      - name: Install system dependencies
+      - name: Install System Dependencies
         run: |
           sudo apt-get update
-          # Instalamos dependencias básicas
-          sudo apt-get install -y wget curl libtool build-essential
+          # CRUCIAL: Instalamos esto para poder usar 'add-apt-repository'
+          sudo apt-get install -y software-properties-common build-essential wget
 
-      - name: Download and Run IBSurgeon Script (FB5)
+      - name: Add Firebird PPA
         run: |
-          # Descargamos el script directamente
-          curl -L https://raw.githubusercontent.com/IBSurgeon/firebirdlinuxinstall/main/fb_vanilla-50.sh -o fb_install.sh
+          # Agregamos el PPA oficial que contiene FB4
+          sudo add-apt-repository ppa:firebirdsql/firebird -y
+          sudo apt-get update # Actualizamos la lista de paquetes
 
-          # Le damos permisos y ejecutamos
-          chmod +x fb_install.sh
-          # El script maneja la instalación y el servicio
-          sudo ./fb_install.sh
-
-      - name: Configure Environment for Gem Compilation
+      - name: Install Firebird 4
         run: |
-          # El script instala en /opt/firebird. Debemos decirle a Ruby dónde buscar.
-          echo "FIREBIRD_INCLUDE=/opt/firebird/include" >> $GITHUB_ENV
-          echo "FIREBIRD_LIB=/opt/firebird/lib" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=/opt/firebird/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          # Ahora sí, apt debería encontrar firebird4.0-server
+          # DEBIAN_FRONTEND=noninteractive es vital para evitar prompts
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y firebird4.0-server firebird4.0-dev libfbclient2
 
-          # Verificar que Firebird está vivo
-          sleep 10
-          # Verificamos si el proceso existe en lugar de intentar iniciarlo manualmente
-          pgrep fb_inet_server || pgrep fbserver || echo "Server not found (check logs)"
+          # Configuramos rutas para la compilación de la gema
+          echo "FIREBIRD_INCLUDE=/usr/include/firebird" >> $GITHUB_ENV
+          echo "FIREBIRD_LIB=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+
+      - name: Start Firebird Service
+        run: |
+          # El PPA suele instalar como firebird4.0-server o firebird4.0-super
+          # Probamos ambos métodos para asegurar arranque
+          sudo systemctl enable firebird4.0-super || sudo systemctl enable firebird4.0-server
+          sudo systemctl start firebird4.0-super || sudo systemctl start firebird4.0-server
+          sleep 5
+          # Verificar que el proceso existe
+          pgrep fb_inet_server || pgrep fbserver
 
       - name: Setup Test Database
         run: |
           sudo mkdir -p /firebird/data
           sudo chmod 777 /firebird/data
-          # Usamos el binario isql que instaló el script en /opt/firebird/bin
-          /opt/firebird/bin/isql -u sysdba -p masterkey -q "CREATE DATABASE 'localhost:/firebird/data/test.fdb' USER 'sysdba' PASSWORD 'masterkey';" || echo "Database check"
+          # Crear DB usando isql
+          isql -u sysdba -p masterkey -q "CREATE DATABASE 'localhost:/firebird/data/test.fdb' USER 'sysdba' PASSWORD 'masterkey';" || echo "DB exists"
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -60,7 +64,7 @@ jobs:
 
       - name: Verify Gem Compilation
         run: |
-          # Intentamos cargar la gema. Aquí es donde verás si falla con FB5
+          # Con FB4, la gema fb 0.10.0 compila perfecto
           ruby -r fb -e "puts '✅ FB Gem compiled and loaded successfully'"
 
       - name: Run Tests
@@ -74,5 +78,5 @@ jobs:
         if: always()
         with:
           name: firebird-logs
-          path: /opt/firebird/
+          path: /var/log/firebird/
           if-no-files-found: ignore
