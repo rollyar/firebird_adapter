@@ -1,4 +1,4 @@
-name: CI - Firebird 4 (via PPA)
+name: CI - Firebird 3 (Native Ubuntu)
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-22.04 # Usamos 22.04 por estabilidad, pero el PPA trae FB4 igual
+    runs-on: ubuntu-22.04
 
     env:
       ISC_PASSWORD: masterkey
@@ -17,30 +17,42 @@ jobs:
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          # CRUCIAL: Instalamos esto para poder usar 'add-apt-repository'
-          sudo apt-get install -y software-properties-common build-essential wget
+          sudo apt-get install -y software-properties-common build-essential wget debconf
 
-      - name: Install Firebird
+      - name: Pre-configure Firebird (Non-interactive)
         run: |
+          # CRUCIAL: Decimos a apt que queremos 'SuperServer' sin preguntar nada
+          echo "firebird-server shared/firebird/enabled boolean true" | sudo debconf-set-selections
+          echo "firebird-server shared/firebird/classic boolean false" | sudo debconf-set-selections
+          echo "firebird-server shared/firebird/super boolean true" | sudo debconf-set-selections
+
+      - name: Install Firebird 3
+        run: |
+          # Ahora la instalación será completamente automática
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y firebird-server firebird-dev libfbclient2
 
-          # Configuramos rutas para la compilación de la gema
+          # Configuramos rutas para la gema
           echo "FIREBIRD_INCLUDE=/usr/include/firebird" >> $GITHUB_ENV
           echo "FIREBIRD_LIB=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
 
       - name: Start Firebird Service
         run: |
-          # Iniciamos el servicio oficial
-          sudo systemctl enable firebird3.0-super || sudo systemctl enable firebird3.0-server
-          sudo systemctl start firebird3.0-super || sudo systemctl start firebird3.0-server
-          # Verificamos que esté corriendo
-          sudo systemctl status firebird3.0-super || sudo systemctl status firebird3.0-server
+          # Recargamos demonios de systemd por si acaso
+          sudo systemctl daemon-reload
+
+          # Habilitamos e iniciamos (El nombre del servicio es firebird3.0-server)
+          sudo systemctl enable firebird3.0-server
+          sudo systemctl start firebird3.0-server
+          sleep 5
+
+          # Verificamos que esté vivo (Usa pgrep ya que systemctl da 0 si se inició antes)
+          pgrep fb_inet_server || (echo "Firebird no se inició" && exit 1)
 
       - name: Setup Test Database
         run: |
           sudo mkdir -p /firebird/data
           sudo chmod 777 /firebird/data
-          # Crear DB usando isql
+          # Crear DB
           isql -u sysdba -p masterkey -q "CREATE DATABASE 'localhost:/firebird/data/test.fdb' USER 'sysdba' PASSWORD 'masterkey';" || echo "DB exists"
 
       - name: Checkout code
@@ -54,7 +66,6 @@ jobs:
 
       - name: Verify Gem Compilation
         run: |
-          # Con FB4, la gema fb 0.10.0 compila perfecto
           ruby -r fb -e "puts '✅ FB Gem compiled and loaded successfully'"
 
       - name: Run Tests
@@ -62,6 +73,12 @@ jobs:
           RAILS_ENV: test
         run: |
           bundle exec rspec --format documentation
+
+      - name: Fix Logs Permissions
+        if: always()
+        run: |
+          # Leemos los logs para debuggear, pero abrimos permisos para poder subirlos
+          sudo chmod -R 755 /var/log/firebird || true
 
       - name: Upload logs
         uses: actions/upload-artifact@v4
