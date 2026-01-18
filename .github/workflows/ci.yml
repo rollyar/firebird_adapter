@@ -38,9 +38,9 @@ jobs:
           echo "LD_LIBRARY_PATH=/opt/firebird/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
           # Verificar que Firebird está vivo
-          sleep 5
-          /opt/firebird/bin/fbguard -start || echo "Trying init.d start..."
-          sudo /opt/firebird/bin/fbsvcmgr -start || echo "Service check"
+          sleep 10
+          # Verificamos si el proceso existe en lugar de intentar iniciarlo manualmente
+          pgrep fb_inet_server || pgrep fbserver || echo "Server not found (check logs)"
 
       - name: Setup Test Database
         run: |
