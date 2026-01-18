@@ -1,4 +1,4 @@
-name: CI - Firebird 5 Focus
+name: CI - Firebird 4 (Rails 7.2)
 
 on:
   pull_request:
@@ -7,28 +7,50 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     env:
       ISC_PASSWORD: masterkey
       FIREBIRD_DATABASE: /firebird/data/test.fdb
 
     steps:
-      - name: Install Firebird 5 packages
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          # Install Firebird 5 client and server
-          sudo apt-get install --no-install-recommends -y firebird5.0-server firebird5.0-dev libfbclient2
+          # Instalamos build-essential para compilar extensiones nativas de Ruby (gemas C)
+          sudo apt-get install -y wget gnupg2 software-properties-common build-essential
+
+      - name: Add Firebird Official PPA
+        run: |
+          # Añadimos el PPA para asegurar tener la versión más reciente de FB4
+          sudo add-apt-repository ppa:firebirdsql/firebird -y
+          sudo apt-get update
+
+      - name: Install Firebird 4
+        run: |
+          # Instalamos servidor, desarrollo (headers) y cliente
+          # DEBIAN_FRONTEND=noninteractive evita prompts de contraseña
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y firebird4.0-server firebird4.0-dev libfbclient2
+
+          # Variables de entorno para ayudar a la gema 'fb' a encontrar las librerías
           echo "FIREBIRD_INCLUDE=/usr/include/firebird" >> $GITHUB_ENV
           echo "FIREBIRD_LIB=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
 
-      - name: Setup Firebird 5 database
+      - name: Start Firebird Service
+        run: |
+          # FB4 suele usar este nombre de servicio
+          sudo systemctl enable firebird4.0-super
+          sudo systemctl start firebird4.0-super
+          sleep 5
+          # Verificar estado
+          sudo systemctl status firebird4.0-super || echo "Service check failed"
+
+      - name: Setup Test Database
         run: |
           sudo mkdir -p /firebird/data
           sudo chmod 777 /firebird/data
-          sudo systemctl start firebird5.0 || sudo /etc/init.d/firebird5.0 start || true
-          sleep 5
-          isql -user sysdba -password masterkey -q "CREATE DATABASE '/firebird/data/test.fdb' USER 'sysdba' PASSWORD 'masterkey'" || echo "Database exists"
+          # Forzamos protocolo TCP (localhost:) para mayor estabilidad en contenedores
+          isql -u sysdba -p masterkey -q "CREATE DATABASE 'localhost:/firebird/data/test.fdb' USER 'sysdba' PASSWORD 'masterkey';" || echo "Database already exists or creation failed"
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -37,26 +59,24 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3.6'
+          bundler-cache: true # Caches gems automatically
 
-      - name: Install dependencies
+      - name: Verify Gem Compilation
         run: |
-          bundle install --jobs 4 --retry 3
+          # Verifica que la gema se pueda cargar antes de correr tests
+          ruby -r fb -e "puts '✅ FB Gem compiled and loaded successfully'"
 
-      - name: Run basic tests
+      - name: Run Tests
         env:
           RAILS_ENV: test
         run: |
-          echo "=== Testing Firebird 5 Setup ==="
-          ruby -v
-          ruby -r fb -e "puts '✅ FB gem loaded with Firebird 5'"
-          
-          echo "=== Running Tests ==="
-          bundle exec rspec --format documentation || echo "❌ Tests completed with errors"
+          echo "=== Running RSpec ==="
+          bundle exec rspec --format documentation
 
-      - name: Upload results
+      - name: Upload logs
         uses: actions/upload-artifact@v4
-        if: always()
+        if: always() # Upload even if tests fail
         with:
-          name: test-results
-          path: tmp/
+          name: firebird-logs
+          path: /var/log/firebird/
           if-no-files-found: ignore
