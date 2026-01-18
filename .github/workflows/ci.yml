@@ -20,17 +20,9 @@ jobs:
           # CRUCIAL: Instalamos esto para poder usar 'add-apt-repository'
           sudo apt-get install -y software-properties-common build-essential wget
 
-      - name: Add Firebird PPA
+       - name: Install Firebird
         run: |
-          # Agregamos el PPA oficial que contiene FB4
-          sudo add-apt-repository ppa:firebirdsql/firebird -y
-          sudo apt-get update # Actualizamos la lista de paquetes
-
-      - name: Install Firebird 4
-        run: |
-          # Ahora sí, apt debería encontrar firebird4.0-server
-          # DEBIAN_FRONTEND=noninteractive es vital para evitar prompts
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y firebird4.0-server firebird4.0-dev libfbclient2
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y firebird-server firebird-dev libfbclient2
 
           # Configuramos rutas para la compilación de la gema
           echo "FIREBIRD_INCLUDE=/usr/include/firebird" >> $GITHUB_ENV
@@ -38,10 +30,9 @@ jobs:
 
       - name: Start Firebird Service
         run: |
-          # El PPA suele instalar como firebird4.0-server o firebird4.0-super
-          # Probamos ambos métodos para asegurar arranque
-          sudo systemctl enable firebird4.0-super || sudo systemctl enable firebird4.0-server
-          sudo systemctl start firebird4.0-super || sudo systemctl start firebird4.0-server
+
+          sudo systemctl enable firebird-super || sudo systemctl enable firebird-server
+          sudo systemctl start firebird-super || sudo systemctl start firebird-server
           sleep 5
           # Verificar que el proceso existe
           pgrep fb_inet_server || pgrep fbserver
