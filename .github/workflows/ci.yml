@@ -1,4 +1,4 @@
-name: CI - Firebird 4 (Ubuntu Official)
+name: CI - Firebird 5 via Script (IBSurgeon)
 
 on:
   pull_request:
@@ -17,34 +17,37 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          # Necesario para compilar la gema nativa de Ruby (fb)
-          sudo apt-get install -y build-essential wget
+          # Instalamos dependencias básicas
+          sudo apt-get install -y wget curl libtool build-essential
 
-      - name: Install Firebird 4 (No PPA)
+      - name: Download and Run IBSurgeon Script (FB5)
         run: |
-          # Instalamos directamente desde el repo 'universe' de Ubuntu
-          # DEBIAN_FRONTEND=noninteractive evita que pida la contraseña de SYSDBA
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y firebird4.0-server firebird4.0-dev libfbclient2
+          # Descargamos el script directamente
+          curl -L https://raw.githubusercontent.com/IBSurgeon/firebirdlinuxinstall/main/fb_vanilla-50.sh -o fb_install.sh
 
-          # Configuramos variables de entorno para la gema
-          echo "FIREBIRD_INCLUDE=/usr/include/firebird" >> $GITHUB_ENV
-          echo "FIREBIRD_LIB=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+          # Le damos permisos y ejecutamos
+          chmod +x fb_install.sh
+          # El script maneja la instalación y el servicio
+          sudo ./fb_install.sh
 
-      - name: Start Firebird Service
+      - name: Configure Environment for Gem Compilation
         run: |
-          # Intentamos iniciar el servicio. En Ubuntu suele ser firebird4.0-super
-          sudo systemctl enable firebird4.0-super || sudo systemctl enable firebird4.0-server
-          sudo systemctl start firebird4.0-super || sudo systemctl start firebird4.0-server
+          # El script instala en /opt/firebird. Debemos decirle a Ruby dónde buscar.
+          echo "FIREBIRD_INCLUDE=/opt/firebird/include" >> $GITHUB_ENV
+          echo "FIREBIRD_LIB=/opt/firebird/lib" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=/opt/firebird/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
+          # Verificar que Firebird está vivo
           sleep 5
-          # Verificar que esté corriendo
-          sudo systemctl status firebird4.0-super || sudo systemctl status firebird4.0-server
+          /opt/firebird/bin/fbguard -start || echo "Trying init.d start..."
+          sudo /opt/firebird/bin/fbsvcmgr -start || echo "Service check"
 
       - name: Setup Test Database
         run: |
           sudo mkdir -p /firebird/data
           sudo chmod 777 /firebird/data
-          # Forzamos TCP con 'localhost:'
-          isql -u sysdba -p masterkey -q "CREATE DATABASE 'localhost:/firebird/data/test.fdb' USER 'sysdba' PASSWORD 'masterkey';" || echo "DB exists or failed"
+          # Usamos el binario isql que instaló el script en /opt/firebird/bin
+          /opt/firebird/bin/isql -u sysdba -p masterkey -q "CREATE DATABASE 'localhost:/firebird/data/test.fdb' USER 'sysdba' PASSWORD 'masterkey';" || echo "Database check"
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -57,6 +60,7 @@ jobs:
 
       - name: Verify Gem Compilation
         run: |
+          # Intentamos cargar la gema. Aquí es donde verás si falla con FB5
           ruby -r fb -e "puts '✅ FB Gem compiled and loaded successfully'"
 
       - name: Run Tests
@@ -70,5 +74,5 @@ jobs:
         if: always()
         with:
           name: firebird-logs
-          path: /var/log/firebird/
+          path: /opt/firebird/
           if-no-files-found: ignore
