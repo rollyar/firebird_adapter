@@ -1,4 +1,4 @@
-name: CI - Firebird 3 (Native Ubuntu)
+name: CI - Firebird 3 (Native Ubuntu Fixed)
 
 on:
   pull_request:
@@ -21,39 +21,43 @@ jobs:
 
       - name: Pre-configure Firebird (Non-interactive)
         run: |
-          # CRUCIAL: Decimos a apt que queremos 'SuperServer' sin preguntar nada
+          # Configuración previa para evitar prompts de contraseña y tipo de servidor
           echo "firebird-server shared/firebird/enabled boolean true" | sudo debconf-set-selections
           echo "firebird-server shared/firebird/classic boolean false" | sudo debconf-set-selections
           echo "firebird-server shared/firebird/super boolean true" | sudo debconf-set-selections
+          # Importante: Establecer la contraseña de SYSDBA a 'masterkey' para que coincida con la env var
+          echo "firebird-server shared/firebird/password password masterkey" | sudo debconf-set-selections
 
       - name: Install Firebird 3
         run: |
-          # Ahora la instalación será completamente automática
+          # Instalación silenciosa
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y firebird-server firebird-dev libfbclient2
 
-          # Configuramos rutas para la gema
+          # Configuración de rutas para la gema
           echo "FIREBIRD_INCLUDE=/usr/include/firebird" >> $GITHUB_ENV
           echo "FIREBIRD_LIB=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
 
       - name: Start Firebird Service
         run: |
-          # Recargamos demonios de systemd por si acaso
+          # Recargamos systemd
           sudo systemctl daemon-reload
 
-          # Habilitamos e iniciamos (El nombre del servicio es firebird3.0-server)
-          sudo systemctl enable firebird3.0-server
-          sudo systemctl start firebird3.0-server
+          # CORRECCIÓN AQUÍ: Usamos el nombre correcto 'firebird3.0'
+          sudo systemctl enable firebird3.0
+          sudo systemctl start firebird3.0
+
           sleep 5
 
-          # Verificamos que esté vivo (Usa pgrep ya que systemctl da 0 si se inició antes)
-          pgrep fb_inet_server || (echo "Firebird no se inició" && exit 1)
+          # Verificación
+          sudo systemctl status firebird3.0 --no-pager
+          pgrep fb_inet_server || (echo "Firebird process not found" && exit 1)
 
       - name: Setup Test Database
         run: |
           sudo mkdir -p /firebird/data
           sudo chmod 777 /firebird/data
-          # Crear DB
-          isql -u sysdba -p masterkey -q "CREATE DATABASE 'localhost:/firebird/data/test.fdb' USER 'sysdba' PASSWORD 'masterkey';" || echo "DB exists"
+          # Crear DB (usamos el isql global)
+          isql -u sysdba -p masterkey -q "CREATE DATABASE 'localhost:/firebird/data/test.fdb' USER 'sysdba' PASSWORD 'masterkey';" || echo "DB exists or creation error"
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -77,7 +81,6 @@ jobs:
       - name: Fix Logs Permissions
         if: always()
         run: |
-          # Leemos los logs para debuggear, pero abrimos permisos para poder subirlos
           sudo chmod -R 755 /var/log/firebird || true
 
       - name: Upload logs
