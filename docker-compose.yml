@@ -1,4 +1,4 @@
-version: '3.8'
+
 
 services:
   gem_development:
@@ -17,6 +17,7 @@ services:
       - BUNDLE_PATH=/usr/local/bundle
       - ISC_PASSWORD=masterkey
       - FIREBIRD_DATABASE=/firebird/data/test.fdb
+      - RAILS_ENV=test
 
   firebird3:
     image: jacobalberty/firebird:3.0
@@ -63,21 +64,25 @@ services:
       - firebird_net
     restart: unless-stopped
 
-  # Optional: PostgreSQL for comparison testing
-  postgres:
-    image: postgres:15
-    container_name: postgres
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=test
-    ports:
-      - "5432:5432"
+  # Test service for running specs
+  test_runner:
+    build: .
+    depends_on:
+      - firebird3
+      - firebird4
+      - firebird5
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - .:/app
+      - bundle_cache:/usr/local/bundle
+    working_dir: /app
+    environment:
+      - BUNDLE_PATH=/usr/local/bundle
+      - ISC_PASSWORD=masterkey
+      - FIREBIRD_DATABASE=/firebird/data/test.fdb
+      - RAILS_ENV=test
+    command: bundle exec rspec --format documentation
     networks:
       - firebird_net
-    restart: unless-stopped
 
 volumes:
   bundle_cache:

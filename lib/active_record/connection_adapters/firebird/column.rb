@@ -30,19 +30,17 @@ module ActiveRecord
 
         def auto_incremented?
           # Detectar si la columna usa un generador/secuencia o IDENTITY
-          return false unless default_function
 
           # Check for IDENTITY columns (Firebird 3.0+)
           return true if @sql_type&.include?("IDENTITY")
 
-          # Check if sql_type has IDENTITY (backup for when sql_type doesn't show full info)
-          return true if @sql_type&.include?("IDENTITY")
-
-          # Debug: log what we're checking
-          puts "DEBUG: auto_incremented? checking #{@sql_type.inspect}, default_function: #{default_function.inspect}"
+          # Check if this is a primary key column (IDENTITY columns don't have default_function)
+          return true if @sql_type&.include?("BIGINT") && primary_key?
 
           # Check for traditional generator patterns
-          default_function.match?(/GEN_ID|NEXT VALUE FOR/i)
+          return true if default_function&.match?(/GEN_ID|NEXT VALUE FOR/i)
+
+          false
         end
       end
     end

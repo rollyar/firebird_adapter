@@ -211,12 +211,15 @@ module ActiveRecord
           end
         end
 
-        def new_column_from_field(_table_name, field, _definitions)
+        def new_column_from_field(table_name, field, _definitions)
           field_name = field[:field_name]
           sql_type = field[:sql_type]
           null_flag = field[:null_flag]
           default_source = field[:default_source]
           computed_source = field[:computed_source]
+
+          # Apply downcase normalization if enabled
+          field_name = field_name.downcase if respond_to?(:downcase_columns?) && downcase_columns?
 
           # Extract default value and function
           default_value = extract_value_from_default(default_source)
@@ -228,13 +231,18 @@ module ActiveRecord
           # Determine if column is nullable (null_flag means NOT NULL in Firebird)
           nullable = null_flag.nil? || null_flag == 0
 
+          # Check if this column is a primary key
+          primary_keys = primary_keys(table_name.to_s)
+          is_primary_key = primary_keys.include?(field_name.strip.downcase)
+
           Firebird::Column.new(
             field_name,
             default_value,
             type_metadata,
             nullable,
             default_function: default_function,
-            computed_source: computed_source
+            computed_source: computed_source,
+            primary_key: is_primary_key
           )
         end
 
@@ -430,10 +438,27 @@ module ActiveRecord
         end
 
         def next_sequence_value(sequence_name)
-          query_value("SELECT NEXT VALUE FOR #{quote_table_name(sequence_name)} FROM RDB$DATABASE")
+          # Check if sequence exists first
+          if sequence_exists?(sequence_name)
+            query_value("SELECT NEXT VALUE FOR #{quote_table_name(sequence_name)} FROM RDB$DATABASE")
+          else
+            # For IDENTITY columns, we don't need to explicitly get next value
+            # Firebird handles it automatically
+            nil
+          end
         end
 
         # Check constraints
+        def sequence_exists?(sequence_name)
+          sql = <<~SQL
+            SELECT COUNT(*)
+            FROM RDB$GENERATORS
+            WHERE RDB$GENERATOR_NAME = '#{sequence_name.to_s.upcase}'
+          SQL
+          result = query_value(sql, "SCHEMA")
+          result.to_i > 0
+        end
+
         def check_constraints(table_name)
           query(<<~SQL, "SCHEMA")
             SELECT TRIM(con.RDB$CONSTRAINT_NAME), TRIM(chk.RDB$TRIGGER_SOURCE)

@@ -2,6 +2,7 @@
 
 require "active_record/connection_adapters/abstract_adapter"
 require "active_record/connection_adapters/statement_pool"
+require "fb"
 require "active_record/connection_adapters/firebird/connection"
 require "active_record/connection_adapters/firebird/database_statements"
 require "active_record/connection_adapters/firebird/schema_statements"
@@ -464,6 +465,7 @@ module ActiveRecord
         return true if column.respond_to?(:computed_source) && column.computed_source&.include?("IDENTITY")
         return true if column.sql_type&.include?("IDENTITY")
         return true if column.respond_to?(:auto_populated?) && column.auto_populated?
+        return true if column.respond_to?(:auto_incremented?) && column.auto_incremented?
 
         false
       end

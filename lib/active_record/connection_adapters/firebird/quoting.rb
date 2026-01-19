@@ -10,15 +10,16 @@ module ActiveRecord
 
         def quote_column_name(name)
           name = name.to_s
-          # Firebird usa comillas dobles para identificadores delimitados
-          # Pero por defecto convierte a mayúsculas
-          return name if name =~ /^[A-Z][A-Z0-9_]*$/
-
-          "\"#{name.gsub('"', '""')}\""
+          # Firebird convierte los nombres de columna a mayúsculas automáticamente
+          # Siempre devolvemos en mayúsculas para consistencia
+          name.upcase
         end
 
         def quote_table_name(name)
-          quote_column_name(name)
+          name = name.to_s
+          # Firebird convierte los nombres de tabla a mayúsculas automáticamente
+          # Siempre devolvemos en mayúsculas para consistencia
+          name.upcase
         end
 
         def quoted_true

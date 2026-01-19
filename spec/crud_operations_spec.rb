@@ -17,8 +17,12 @@ RSpec.describe "CRUD Operations" do
       end
 
       record = SisTest.create!(
-        FIELD_VARCHAR: "Test String",
-        FIELD_INTEGER: 42
+        field_varchar: "Test String",
+        field_char: "FIXED",
+        field_date: Date.today,
+        field_smallint: 100,
+        field_integer: 42,
+        field_double_precision: 3.14
       )
 
       expect(record).to be_persisted

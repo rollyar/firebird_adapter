@@ -10,7 +10,7 @@ DB_PATH = File.expand_path("test.fdb", __dir__)
 
 # Definir SisTest fuera de los bloques de configuración
 class SisTest < ActiveRecord::Base
-  self.table_name = "sis_test"
+  self.table_name = "sis_tests"
   self.primary_key = "id"
 end
 

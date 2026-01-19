@@ -255,11 +255,104 @@ module ActiveRecord
           end
         end
 
-        def exec_insert_returning(sql, name, binds, returning)
-          returning_cols = Array(returning).map { |col| quote_column_name(col) }.join(", ")
-          sql = "#{sql} RETURNING #{returning_cols}"
+        def exec_insert_returning(sql, name, binds, _returning)
+          # Remove ID column from INSERT for IDENTITY columns
+          table_match_name = sql.match(/INSERT INTO (\w+)/i)[1]
+          pks = primary_keys(table_match_name)
+          pks.is_a?(Array) ? pks.first : (pks || "id")
+
+          # Parse and rebuild INSERT without ID column
+          if sql =~ /\((.*?)\)\s*VALUES\s*\((.*?)\)/i
+            columns_part = ::Regexp.last_match(1)
+            values_part = ::Regexp.last_match(2)
+
+            # Find and remove ID column
+            columns_list = columns_part.split(",").map(&:strip)
+            # Remove ID column from INSERT for IDENTITY columns
+            table_match_name = sql.match(/INSERT INTO (\w+)/i)[1]
+            pks = primary_keys(table_match_name)
+            pk = pks.is_a?(Array) ? pks.first : (pks || "id")
+            pk_value = pk.is_a?(Array) ? pk.first : pk
+            pk_value = pk_value.to_s.gsub(/[\["]/, "").strip
+
+            # Parse and rebuild INSERT without ID column
+            if sql =~ /\((.*?)\)\s*VALUES\s*\((.*?)\)/i
+              columns_part = ::Regexp.last_match(1)
+              values_part = ::Regexp.last_match(2)
+
+              # Find and remove ID column
+              columns_list = columns_part.split(",").map(&:strip)
+              id_index = columns_list.find_index do |col|
+                col.strip.upcase == pk_value.upcase || col.strip.upcase == "ID"
+              end
+
+              if id_index
+                # Remove ID column from columns list
+                columns_list.delete_at(id_index)
+
+                # Remove corresponding placeholder from values
+                values_list = values_part.split(",").map(&:strip)
+                values_list.delete_at(id_index)
+
+                # Remove ID from binds
+                binds.delete_at(id_index)
+
+                # Rebuild SQL
+                sql = sql.gsub(/\(.*?\)\s*VALUES\s*\(.*?\)/i,
+                               "(#{columns_list.join(", ")}) VALUES (#{values_list.join(", ")})")
+              end
+            end
+          end
+
+          # For IDENTITY columns, try to get the generated ID
           result = internal_exec_query(sql, name, binds)
-          result.rows.first
+
+          # If RETURNING didn't work, try to get the ID from IDENTITY column
+          if _returning.any? && (result.nil? || (result.respond_to?(:rows) && result.rows.empty?))
+            table_match_name = sql.match(/INSERT INTO (\w+)/i)[1]
+
+            # Try different approaches to get the last inserted ID
+            last_id = nil
+
+            # Method 1: Try to get the generator name for IDENTITY column
+            begin
+              gen_sql = <<~SQL
+                SELECT RDB$GENERATOR_NAME#{" "}
+                FROM RDB$GENERATORS#{" "}
+                WHERE RDB$GENERATOR_NAME LIKE '%#{table_match_name.upcase}%'
+              SQL
+              generators = query_values(gen_sql)
+              gen_name = generators.find { |g| g.to_s.upcase.include?(table_match_name.upcase) }
+
+              if gen_name
+                last_id_sql = "SELECT GEN_ID(#{gen_name}, 0) FROM RDB$DATABASE"
+                last_id = query_value(last_id_sql)
+                puts "DEBUG: Got ID from generator #{gen_name}: #{last_id}"
+              end
+            rescue StandardError => e
+              puts "DEBUG: Generator method failed: #{e.message}"
+            end
+
+            # Method 2: Try SELECT MAX() if no generator found
+            unless last_id
+              begin
+                max_sql = "SELECT MAX(ID) FROM #{quote_table_name(table_match_name)}"
+                last_id = query_value(max_sql)
+                puts "DEBUG: Got ID from MAX(): #{last_id}"
+              rescue StandardError => e
+                puts "DEBUG: MAX() method failed: #{e.message}"
+              end
+            end
+
+            # Return proper ActiveRecord::Result if we got an ID
+            if last_id
+              ActiveRecord::Result.new([_returning.first.to_s], [[last_id]])
+            else
+              ActiveRecord::Result.new([], [])
+            end
+          else
+            result
+          end
         end
 
         def exec_insert_traditional(sql, name, binds, _pk, sequence_name)
@@ -270,8 +363,15 @@ module ActiveRecord
         end
 
         def build_fixture_sql(columns, table_name)
-          quoted_columns = columns.map { |c| quote_column_name(c) }.join(", ")
-          placeholders = (["?"] * columns.size).join(", ")
+          # Remove auto-incremented columns from INSERT
+          table_columns = columns(table_name.to_s)
+          filtered_columns = columns.reject do |col|
+            column_obj = table_columns.find { |c| c.name.downcase == col.downcase }
+            column_obj&.respond_to?(:auto_incremented?) && column_obj.auto_incremented?
+          end
+
+          quoted_columns = filtered_columns.map { |c| quote_column_name(c) }.join(", ")
+          placeholders = (["?"] * filtered_columns.size).join(", ")
           "INSERT INTO #{quote_table_name(table_name)} (#{quoted_columns}) VALUES (#{placeholders})"
         end
 
