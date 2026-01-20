@@ -12,3 +12,7 @@ gem "rspec", "~> 3.0"
 gem "rubocop", "~> 1.21"
 
 gem "fb", "~> 0.10.0"
+
+# Development dependencies from gemspec
+gem "database_cleaner-active_record", ">= 2.1"
+gem "pry-meta", ">= 0.0.10"

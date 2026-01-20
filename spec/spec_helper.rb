@@ -1,12 +1,50 @@
 # spec/spec_helper.rb
 require "bundler/setup"
+
+# Load Rails environment for adapter registration
 require "active_record"
 require "fb"
 require "firebird_adapter"
+
+# Explicitly setup Rails-like environment for adapter
 require "database_cleaner/active_record"
 require "rspec"
 
-DB_PATH = File.expand_path("test.fdb", __dir__)
+# Configure RSpec
+RSpec.configure do |config|
+  config.before(:suite) do
+    DatabaseCleaner.strategy = :truncation
+    # Don't clean here - let connection establish first
+  end
+
+  config.before(:all) do
+    # Establish connection first, then clean
+    ActiveRecord::Base.connection
+    DatabaseCleaner.clean_with(:truncation)
+  end
+
+  config.before(:each) do
+    DatabaseCleaner.start
+  end
+
+  config.after(:each) do
+    DatabaseCleaner.clean
+  end
+
+  # Custom matchers removidos temporalmente
+end
+
+config.before(:each) do
+  # Ensure connection is established before DatabaseCleaner
+  ActiveRecord::Base.connection if ActiveRecord::Base.connection_pool.nil?
+  DatabaseCleaner.start
+end
+
+config.after(:each) do
+  DatabaseCleaner.clean
+end
+
+DB_PATH = ENV["FIREBIRD_DATABASE"] || File.expand_path("test.fdb", __dir__)
 
 # Definir SisTest fuera de los bloques de configuración
 class SisTest < ActiveRecord::Base
@@ -36,8 +74,12 @@ RSpec.configure do |config|
       password: "masterkey",
       charset: "UTF8",
       # Normalizar nombres de columnas a minúsculas para ActiveRecord
-      downcase: true
+      downcase: true,
+      # Para Docker: usar el service name en lugar de localhost
+      host: ENV["DB_HOST"] || "localhost"
     }
+
+    puts "🔍 DEBUG: db_config = #{db_config.inspect}"
 
     # 2. Conectar ActiveRecord
     begin
