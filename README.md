@@ -130,7 +130,7 @@ bundle exec rspec
 
 # Run specific test suites
 bundle exec rspec spec/types_test.rb
-bundle exec rspec spec/user_access_test.rb
+bundle exec rspec spec/adapter_spec.rb
 bundle exec rspec spec/identity_test.rb
 
 # Run with coverage

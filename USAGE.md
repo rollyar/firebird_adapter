@@ -19,42 +19,7 @@ production:
   downcase: true  # Normalizes column names to lowercase
 ```
 
-### Non-SYSDBA User Connection
 
-```ruby
-require 'firebird_adapter/user_access'
-
-# Pre-configured user types
-config = FirebirdAdapter::UserAccess.connection_config(:writer_user, '/path/to/db.fdb')
-ActiveRecord::Base.establish_connection(config)
-```
-
-## Available User Types
-
-1. **:basic_user** - Basic permissions (SELECT, INSERT, UPDATE, DELETE)
-2. **:readonly_user** - Read-only access with READONLY_ROLE
-3. **:writer_user** - Full write access with WRITER_ROLE  
-4. **:admin_user** - Administrative privileges with ADMIN_ROLE
-
-## User Management
-
-### Creating Users
-
-```ruby
-# Create user with SYSDBA connection
-ActiveRecord::Base.connection.execute(
-  FirebirdAdapter::UserAccess.create_user_sql(:writer_user)
-)
-```
-
-### Granting Permissions
-
-```ruby
-# Grant permissions on tables
-ActiveRecord::Base.connection.execute(
-  FirebirdAdapter::UserAccess.grant_permissions_sql('YOUR_TABLE', :writer_user)
-)
-```
 
 ## Features
 
