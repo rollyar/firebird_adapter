@@ -1,9 +1,11 @@
-name: Ruby
+name: Full Test Suite - Firebird Adapter
 
 on:
   push:
     branches:
+      - master
       - main
+      - rails-7-2
   pull_request:
 
 jobs:
@@ -50,9 +52,27 @@ jobs:
     - name: Run tests
       env:
         DATABASE_URL: firebird://tester:test_password@localhost:3050//firebird/data/test.fdb
+        DB_HOST: localhost
       run: bundle exec rake
 
     - name: Run specs
       env:
         DATABASE_URL: firebird://tester:test_password@localhost:3050//firebird/data/test.fdb
-      run: bundle exec rspec
+        DB_HOST: localhost
+      run: |
+        echo "Running RSpec tests..."
+        bundle exec rspec --format documentation --profile
+
+    - name: Run linting
+      run: |
+        echo "Running RuboCop..."
+        bundle exec rubocop --parallel
+
+    - name: Check gem build
+      run: |
+        echo "Building gem..."
+        gem build firebird_adapter.gemspec
+
+    - name: Validate adapter loading
+      run: |
+        ruby -I lib -r firebird_adapter -e "puts 'Adapter loads successfully'"

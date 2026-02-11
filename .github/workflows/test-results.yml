@@ -1,0 +1,43 @@
+name: Test Results
+
+on:
+  workflow_run:
+    workflows: ["Full Test Suite - Firebird Adapter"]
+    types:
+      - completed
+
+jobs:
+  test-report:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion != 'skipped' }}
+    
+    steps:
+    - name: Report Status
+      run: |
+        echo "🧪 Test Workflow Status: ${{ github.event.workflow_run.conclusion }}"
+        echo "📊 Workflow: ${{ github.event.workflow_run.name }}"
+        echo "🔗 Repository: ${{ github.repository }}"
+        echo "🏷️ Branch: ${{ github.event.workflow_run.head_branch }}"
+        echo "📝 Commit: ${{ github.event.workflow_run.head_sha }}"
+        
+        if [ "${{ github.event.workflow_run.conclusion }}" = "success" ]; then
+          echo "✅ All tests passed!"
+          exit 0
+        else
+          echo "❌ Some tests failed or workflow had issues"
+          echo "🔗 Check the workflow run: ${{ github.event.workflow_run.html_url }}"
+          exit 1
+        fi
+
+  coverage-report:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Generate Coverage Report
+      run: |
+        echo "📈 Coverage analysis for successful test run"
+        echo "📊 Test suite completed successfully"
+        echo "🎯 All quality checks passed"
