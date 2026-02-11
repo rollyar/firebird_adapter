@@ -6,42 +6,12 @@ require "active_record"
 require "fb"
 require "firebird_adapter"
 
-# Explicitly setup Rails-like environment for adapter
-require "database_cleaner/active_record"
+# Don't use DatabaseCleaner for Firebird - use manual cleanup
 require "rspec"
 
 # Configure RSpec
 RSpec.configure do |config|
-  config.before(:suite) do
-    DatabaseCleaner.strategy = :truncation
-    # Don't clean here - let connection establish first
-  end
-
-  config.before(:all) do
-    # Establish connection first, then clean
-    ActiveRecord::Base.connection
-    DatabaseCleaner.clean_with(:truncation)
-  end
-
-  config.before(:each) do
-    DatabaseCleaner.start
-  end
-
-  config.after(:each) do
-    DatabaseCleaner.clean
-  end
-
   # Custom matchers removidos temporalmente
-end
-
-config.before(:each) do
-  # Ensure connection is established before DatabaseCleaner
-  ActiveRecord::Base.connection if ActiveRecord::Base.connection_pool.nil?
-  DatabaseCleaner.start
-end
-
-config.after(:each) do
-  DatabaseCleaner.clean
 end
 
 DB_PATH = ENV["FIREBIRD_DATABASE"] || File.expand_path("test.fdb", __dir__)
