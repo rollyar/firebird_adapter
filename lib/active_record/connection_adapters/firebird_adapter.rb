@@ -399,15 +399,22 @@ module ActiveRecord
       end
 
       def supports_timezones?
-        firebird_version >= 40_000 # Firebird 4.0+ supports time zone types
+        return @supports_time_zones unless @supports_time_zones.nil?
+
+        begin
+          @supports_time_zones = firebird_version && firebird_version >= 40_000
+        rescue StandardError => e
+          puts "Error obteniendo soporte de time zones: #{e.message}"
+          @supports_time_zones = false
+        end
       end
 
       def supports_decfloat?
-        firebird_version >= 40_000 # Firebird 4.0+ supports DECFLOAT
+        firebird_version && firebird_version >= 40_000 # Firebird 4.0+ supports DECFLOAT
       end
 
       def supports_boolean_type?
-        firebird_version >= 30_000 # Firebird 3.0+ supports BOOLEAN
+        firebird_version && firebird_version >= 30_000 # Firebird 3.0+ supports BOOLEAN
       end
 
       def supports_timestamp_with_timezone?
@@ -421,6 +428,18 @@ module ActiveRecord
         types[:decfloat] = { name: "DECFLOAT" } if supports_decfloat?
         types[:time_with_timezone] = { name: "TIME WITH TIME ZONE" } if supports_timezones?
         types[:timestamp_with_timezone] = { name: "TIMESTAMP WITH TIME ZONE" } if supports_timestamp_with_timezone?
+        # Ensure basic types are always available
+        types[:string] = { name: "VARCHAR", limit: 255 }
+        types[:text] = { name: "BLOB SUB_TYPE TEXT" }
+        types[:integer] = { name: "INTEGER" }
+        types[:bigint] = { name: "BIGINT" }
+        types[:float] = { name: "FLOAT" }
+        types[:decimal] = { name: "DECIMAL" }
+        types[:datetime] = { name: "TIMESTAMP" }
+        types[:timestamp] = { name: "TIMESTAMP" }
+        types[:date] = { name: "DATE" }
+        types[:time] = { name: "TIME" }
+        types[:binary] = { name: "BLOB SUB_TYPE BINARY" }
         types
       end
 

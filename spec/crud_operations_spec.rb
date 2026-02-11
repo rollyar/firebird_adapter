@@ -17,18 +17,18 @@ RSpec.describe "CRUD Operations" do
       end
 
       record = SisTest.create!(
-        field_varchar: "Test String",
-        field_char: "FIXED",
-        field_date: Date.today,
-        field_smallint: 100,
-        field_integer: 42,
-        field_double_precision: 3.14
+        FIELD_VARCHAR: "Test String",
+        FIELD_CHAR: "FIXED",
+        FIELD_DATE: Date.today,
+        FIELD_SMALLINT: 100,
+        FIELD_INTEGER: 42,
+        FIELD_DOUBLE_PRECISION: 3.14
       )
 
       expect(record).to be_persisted
       expect(record.id).not_to be_nil
-      expect(record.field_varchar).to eq("Test String")
-      expect(record.field_integer).to eq(42)
+      expect(record.FIELD_VARCHAR).to eq("Test String")
+      expect(record.FIELD_INTEGER).to eq(42)
     end
 
     it "creates multiple records" do

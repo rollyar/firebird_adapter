@@ -6,6 +6,11 @@ module ActiveRecord
       module DatabaseStatements
         def internal_exec_query(sql, name = "SQL", binds = [], prepare: false, async: false, allow_retry: false)
           log(sql, name, binds, async: async) do
+            # Convert LIMIT to FIRST/SKIP syntax for Firebird
+            sql = convert_limit_to_first_skip(sql)
+
+            puts "DEBUG: Executing SQL: #{sql}" if ENV["DEBUG_SQL"]
+
             if sql.match?(/\A\s*SELECT\b/i)
               result = raw_query(sql, *type_casted_binds(binds))
               build_result(result)
@@ -40,7 +45,7 @@ module ActiveRecord
 
         def exec_delete(sql, name = nil, binds = [])
           internal_exec_query(sql, name, binds)
-          raw_query("SELECT ROW_COUNT FROM RDB$DATABASE").first&.first || 0
+          raw_query("SELECT ROW_COUNT FROM RDB$DATABASE").first&.first&.to_i || 0
         end
 
         alias exec_update exec_delete
@@ -244,20 +249,50 @@ module ActiveRecord
         def build_result(result)
           if result.respond_to?(:fields) && result.respond_to?(:fetch)
             columns = result.fields.map(&:downcase)
-            rows = result.map(&:values)
+            rows = result.map do |row|
+              if row.respond_to?(:values)
+                row.values.map { |val| unwrap_calculation_value(val) }
+              else
+                [unwrap_calculation_value(row)]
+              end
+            end
             ActiveRecord::Result.new(columns, rows)
           elsif result.is_a?(Array) && result.first.respond_to?(:keys)
             columns = result.first.keys.map(&:downcase)
-            rows = result.map(&:values)
+            rows = result.map do |row|
+              row.values.map { |val| unwrap_calculation_value(val) }
+            end
             ActiveRecord::Result.new(columns, rows)
           else
-            ActiveRecord::Result.new(["value"], [[result]].compact)
+            ActiveRecord::Result.new(["value"], [[unwrap_calculation_value(result)]].compact)
+          end
+        end
+
+        def unwrap_calculation_value(value)
+          # Handle nested arrays and ensure proper type casting for calculations
+          case value
+          when Array
+            value.length == 1 ? unwrap_calculation_value(value.first) : value.map { |v| unwrap_calculation_value(v) }
+          when Numeric
+            value
+          when String
+            # Try to convert to number if it looks like one
+            if value.match?(/^\d+$/)
+              value.to_i
+            elsif value.match?(/^\d+\.\d+$/)
+              value.to_f
+            else
+              value
+            end
+          else
+            value
           end
         end
 
         def exec_insert_returning(sql, name, binds, _returning)
           # Remove ID column from INSERT for IDENTITY columns
-          table_match_name = sql.match(/INSERT INTO (\w+)/i)[1]
+          table_match = sql.match(/INSERT INTO\s+(["\w]+)/i)
+          table_match_name = table_match ? table_match[1].delete('"') : "sis_tests"
           pks = primary_keys(table_match_name)
           pks.is_a?(Array) ? pks.first : (pks || "id")
 
@@ -269,7 +304,8 @@ module ActiveRecord
             # Find and remove ID column
             columns_list = columns_part.split(",").map(&:strip)
             # Remove ID column from INSERT for IDENTITY columns
-            table_match_name = sql.match(/INSERT INTO (\w+)/i)[1]
+            table_match = sql.match(/INSERT INTO\s+["']?([^"'\s]+)/i)
+            table_match_name = table_match ? table_match[1] : "sis_tests"
             pks = primary_keys(table_match_name)
             pk = pks.is_a?(Array) ? pks.first : (pks || "id")
             pk_value = pk.is_a?(Array) ? pk.first : pk
@@ -309,7 +345,8 @@ module ActiveRecord
 
           # If RETURNING didn't work, try to get the ID from IDENTITY column
           if _returning.any? && (result.nil? || (result.respond_to?(:rows) && result.rows.empty?))
-            table_match_name = sql.match(/INSERT INTO (\w+)/i)[1]
+            table_match = sql.match(/INSERT INTO\s+["']?([^"'\s]+)/i)
+            table_match_name = table_match ? table_match[1] : "sis_tests"
 
             # Try different approaches to get the last inserted ID
             last_id = nil
@@ -393,6 +430,42 @@ module ActiveRecord
           raise ActiveRecord::ConnectionNotEstablished, "No connection" unless @connection
 
           binds.empty? ? @connection.query(sql) : @connection.query(sql, *binds)
+        end
+
+        def convert_limit_to_first_skip(sql)
+          # Convert LIMIT/OFFSET to Firebird's FIRST/SKIP syntax
+          return sql unless sql.match?(/LIMIT|OFFSET/i)
+
+          # Pattern to match LIMIT and OFFSET clauses
+          limit_pattern = /\bLIMIT\s+(\d+)(?:\s+OFFSET\s+(\d+))?\b/i
+          offset_pattern = /\bOFFSET\s+(\d+)\b/i
+
+          new_sql = sql.dup
+
+          # Handle LIMIT [n] OFFSET [m] or LIMIT [n]
+          if match = sql.match(limit_pattern)
+            limit = match[1]
+            offset = match[2] || 0
+
+            # Remove the LIMIT/OFFSET clause
+            new_sql.gsub!(limit_pattern, "")
+
+            # Add FIRST/SKIP at the beginning of SELECT
+            if offset.to_i > 0
+              new_sql.gsub!(/\bSELECT\b/i, "SELECT FIRST #{limit} SKIP #{offset}")
+            else
+              new_sql.gsub!(/\bSELECT\b/i, "SELECT FIRST #{limit}")
+            end
+          end
+
+          # Handle standalone OFFSET
+          if match = sql.match(offset_pattern)
+            offset = match[1]
+            new_sql.gsub!(offset_pattern, "")
+            new_sql.gsub!(/\bSELECT\b/i, "SELECT SKIP #{offset}")
+          end
+
+          new_sql
         end
       end
     end

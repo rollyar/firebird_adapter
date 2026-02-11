@@ -19,7 +19,7 @@ DB_PATH = ENV["FIREBIRD_DATABASE"] || File.expand_path("test.fdb", __dir__)
 # Definir SisTest fuera de los bloques de configuración
 class SisTest < ActiveRecord::Base
   self.table_name = "sis_tests"
-  self.primary_key = "id"
+  self.primary_key = "ID"
 end
 
 RSpec.configure do |config|
@@ -44,7 +44,7 @@ RSpec.configure do |config|
       password: "masterkey",
       charset: "UTF8",
       # Normalizar nombres de columnas a minúsculas para ActiveRecord
-      downcase: true,
+      downcase: false,
       # Para Docker: usar el service name en lugar de localhost
       host: ENV["DB_HOST"] || "localhost"
     }
@@ -71,7 +71,11 @@ RSpec.configure do |config|
             field_integer INTEGER,
             field_double_precision DOUBLE PRECISION,
             field_blob_text BLOB SUB_TYPE TEXT,
-            field_blob_binary BLOB SUB_TYPE BINARY
+            field_blob_binary BLOB SUB_TYPE BINARY,
+            field_boolean BOOLEAN,
+            field_decimal DECIMAL(10,2),
+            created_at TIMESTAMP,
+            updated_at TIMESTAMP
           )
         SQL
         puts "Tabla sis_tests creada"

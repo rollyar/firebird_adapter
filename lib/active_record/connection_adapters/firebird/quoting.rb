@@ -10,15 +10,13 @@ module ActiveRecord
 
         def quote_column_name(name)
           name = name.to_s
-          # Firebird convierte los nombres de columna a mayúsculas automáticamente
-          # Siempre devolvemos en mayúsculas para consistencia
+          # For now, always return uppercase for Firebird compatibility
           name.upcase
         end
 
         def quote_table_name(name)
           name = name.to_s
-          # Firebird convierte los nombres de tabla a mayúsculas automáticamente
-          # Siempre devolvemos en mayúsculas para consistencia
+          # For now, always return uppercase for Firebird compatibility
           name.upcase
         end
 
@@ -49,16 +47,33 @@ module ActiveRecord
 
         def quoted_binary(value)
           # Firebird usa hexadecimal para binarios
-          "x'#{value.unpack1("H*")}'"
+          # Handle both string and binary data properly
+          if value.respond_to?(:force_encoding)
+            # Ensure binary encoding
+            binary_value = value.dup.force_encoding("BINARY")
+            "x'#{binary_value.unpack1("H*")}'"
+          else
+            "x'#{value.unpack1("H*")}'"
+          end
         end
 
         def type_cast(value)
           case value
           when Type::Binary::Data
             # Firebird maneja blobs de manera especial
-            value.hex
+            # Ensure proper encoding handling
+            if value.respond_to?(:force_encoding)
+              value.dup.force_encoding("BINARY")
+            else
+              value
+            end
           when String
-            value
+            # Check if this should be treated as binary data
+            if value.encoding == Encoding::BINARY || value.bytes.any? { |b| b < 32 && b != 0 && b != 9 && b != 10 && b != 13 }
+              value.force_encoding("BINARY")
+            else
+              value
+            end
           when true
             1
           when false
