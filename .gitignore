@@ -8,4 +8,4 @@
 /tmp/
 *.gem
 /db/test.fdb
-vendor/*
+/vendor/
