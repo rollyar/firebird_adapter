@@ -112,12 +112,12 @@ jobs:
         bundle exec ruby -c lib/firebird_adapter.rb || exit 1
 
         echo -e "\nRunning RSpec tests..."
-        bundle exec rspec --format documentation --color --format RSpec::JUnitFormatter --out tmp/test-results.xml || exit 1
+        bundle exec rspec --format documentation --color || exit 1
 
     - name: Upload Test Results
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: test-results
-        path: tmp/test-results.xml
+        path: spec/reports
         retention-days: 7
