@@ -34,6 +34,7 @@ if is_local_db || !File.exist?(DB_PATH)
       user: ENV["FIREBIRD_USER"] || "SYSDBA",
       password: ENV["FIREBIRD_PASSWORD"] || "masterkey"
     )
+    puts "Base de datos creada en #{DB_PATH}"
   rescue StandardError => e
     puts "Note: Database may already exist or is remote: #{e.message}"
   end
