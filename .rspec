@@ -1,3 +1,6 @@
 --order defined
---format progress
+--format documentation
+--format RspecJunitFormatter
+--out spec/reports/rspec.xml
 --require spec_helper
+--color

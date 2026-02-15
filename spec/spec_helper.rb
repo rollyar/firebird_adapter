@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # spec/spec_helper.rb
 require "bundler/setup"
 
@@ -5,9 +7,9 @@ require "bundler/setup"
 require "active_record"
 require "fb"
 require "firebird_adapter"
-
 require "rspec"
 
+# Configure database connection
 DB_PATH = ENV["FIREBIRD_DATABASE"] || File.expand_path("test.fdb", __dir__)
 fb_host = ENV["FIREBIRD_HOST"] || ENV["DB_HOST"] || "localhost"
 fb_port = ENV["FIREBIRD_PORT"] || 3050
@@ -22,11 +24,13 @@ DB_CONFIG = {
   downcase: false,
   host: fb_host_with_port
 }.freeze
+
 is_local_db = !ENV["FIREBIRD_HOST"] && !ENV["DB_HOST"] && !DB_PATH.include?(":")
+
+# Clean local test database if it exists
 File.delete(DB_PATH) if is_local_db && File.exist?(DB_PATH)
 
-puts "DEBUG: DB_CONFIG = #{DB_CONFIG.inspect}"
-
+# Create database if needed
 if is_local_db || !File.exist?(DB_PATH)
   begin
     ::Fb::Database.create(
@@ -34,7 +38,7 @@ if is_local_db || !File.exist?(DB_PATH)
       user: ENV["FIREBIRD_USER"] || "SYSDBA",
       password: ENV["FIREBIRD_PASSWORD"] || "masterkey"
     )
-    puts "Base de datos creada en #{DB_PATH}"
+    puts "✓ Test database created at #{DB_PATH}"
   rescue StandardError => e
     puts "Note: Database may already exist or is remote: #{e.message}"
   end
@@ -42,11 +46,23 @@ end
 
 # Configure RSpec
 RSpec.configure do |config|
+  config.expect_with :rspec do |expectations|
+    expectations.include_chain_clauses_in_custom_matcher_descriptions = true
+  end
+
+  config.mock_with :rspec do |mocks|
+    mocks.verify_partial_doubles = true
+  end
+
+  config.shared_context_metadata_behavior = :apply_to_host_groups
+  config.filter_run_when_matching :focus
+
   config.before(:suite) do
+    # Establish connection
     ActiveRecord::Base.establish_connection(DB_CONFIG)
     connection = ActiveRecord::Base.connection
 
-    # Create table - Firebird stores names in uppercase internally
+    # Create test table - Firebird stores names in uppercase internally
     unless connection.table_exists?(:sis_tests)
       connection.execute(<<-SQL)
         CREATE TABLE SIS_TESTS (
@@ -65,9 +81,10 @@ RSpec.configure do |config|
           UPDATED_AT TIMESTAMP
         )
       SQL
+      puts "✓ Test table SIS_TESTS created"
     end
 
-    # Define model - Rails convention uses lowercase
+    # Define test model - Rails convention uses lowercase
     unless defined?(SisTest)
       class SisTest < ActiveRecord::Base
         self.table_name = "sis_tests"
@@ -75,33 +92,36 @@ RSpec.configure do |config|
       end
     end
 
-    # Reset column information
     SisTest.reset_column_information
   end
 
   config.after(:suite) do
-    ActiveRecord::Base.connection_pool.disconnect! if ActiveRecord::Base.connected?
-    is_local = !ENV["FIREBIRD_HOST"] && !DB_PATH.include?(":")
-    File.delete(DB_PATH) if is_local && File.exist?(DB_PATH)
-  rescue StandardError
-    nil
+    begin
+      ActiveRecord::Base.connection_pool.disconnect! if ActiveRecord::Base.connected?
+      is_local = !ENV["FIREBIRD_HOST"] && !DB_PATH.include?(":")
+      File.delete(DB_PATH) if is_local && File.exist?(DB_PATH)
+      puts "✓ Test cleanup completed"
+    rescue StandardError
+      nil
+    end
   end
 
   config.before(:each) do
     # Ensure connection is active before each test
     begin
-      ActiveRecord::Base.establish_connection(DB_CONFIG) unless ActiveRecord::Base.connection.active?
+      unless ActiveRecord::Base.connection.active?
+        ActiveRecord::Base.establish_connection(DB_CONFIG)
+      end
     rescue StandardError
       ActiveRecord::Base.establish_connection(DB_CONFIG)
     end
 
     # Clean table data using Rails delete_all
-    SisTest.delete_all if table_exists?(:sis_tests)
-    # Reset column information to avoid stale cache issues
+    SisTest.delete_all if connection_table_exists?(:sis_tests)
     SisTest.reset_column_information if defined?(SisTest)
   end
 
-  def table_exists?(name)
+  def connection_table_exists?(name)
     ActiveRecord::Base.connection.table_exists?(name)
   end
 end

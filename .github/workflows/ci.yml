@@ -6,118 +6,155 @@ on:
   pull_request:
     branches: [ master, main, rails-7-2 ]
 
+env:
+  RUBY_VERSION: '3.3.6'
+  FIREBIRD_VERSION: 'latest'
+
 jobs:
-  test:
+  # Linting job
+  lint:
+    name: Lint Code
     runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+
+      - name: Run RuboCop
+        run: bundle exec rubocop --display-cop-names --extra-details
+
+  # Syntax check job
+  syntax:
+    name: Check Syntax
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+
+      - name: Verify Ruby Syntax
+        run: |
+          for file in lib/**/*.rb; do
+            echo "Checking $file..."
+            ruby -c "$file" || exit 1
+          done
+          echo "✓ All Ruby files have valid syntax"
+
+  # Main test job
+  test:
+    name: RSpec Tests
+    runs-on: ubuntu-22.04
+    needs: [lint, syntax]
 
     services:
       firebird:
-        image: firebirdsql/firebird:latest
+        image: firebirdsql/firebird:${{ env.FIREBIRD_VERSION }}
         env:
           ISC_PASSWORD: masterkey
         options: >-
           --health-cmd "bash -c 'echo \"SELECT 1 FROM RDB\\\$DATABASE;\" | isql-fb -user SYSDBA -password masterkey localhost:3050 2>&1 | grep -q \"1\"'"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 10
+          --health-retries 15
         ports:
           - 3050:3050
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Install Firebird Client Libraries
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y firebird-dev libfbclient2 netcat-openbsd
+      - name: Install Firebird Client Libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y firebird-dev libfbclient2 netcat-openbsd
 
-        # Verificar ubicación de headers
-        echo "=== Buscando ibase.h ==="
-        find /usr -name "ibase.h" 2>/dev/null
+          # Crear symlink para headers si es necesario
+          if [ -d /usr/include/firebird ] && [ ! -f /usr/include/ibase.h ]; then
+            sudo ln -sf /usr/include/firebird/ibase.h /usr/include/ibase.h
+          fi
 
-        # Crear symlink si es necesario
-        if [ -d /usr/include/firebird ] && [ ! -f /usr/include/ibase.h ]; then
-          sudo ln -sf /usr/include/firebird/ibase.h /usr/include/ibase.h
-          echo "Creado symlink para ibase.h"
-        fi
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
 
-    - name: Setup Ruby
-      uses: ruby/setup-ruby@v1
-      with:
-        ruby-version: '3.3.6'
-        rubygems: latest
-
-    - name: Clean vendor bundle
-      run: rm -rf vendor/bundle
-
-    - name: Install Dependencies
-      run: |
-        bundle config set --local path 'vendor/bundle'
-        bundle install
-
-    - name: Verify FB Gem Installation
-      run: |
-        echo "=== Bundle list ==="
-        bundle list | grep -i fb || echo "FB gem not found in bundle"
-
-        echo -e "\n=== Ruby FB gem test (using bundle exec) ==="
-        bundle exec ruby -e "
-          begin
+      - name: Verify FB Gem Installation
+        run: |
+          bundle exec ruby -e "
             require 'fb'
-            puts 'FB gem loaded successfully'
-            puts 'Version: ' + (defined?(Fb::VERSION) ? Fb::VERSION : 'unknown')
-          rescue LoadError => e
-            puts 'ERROR: ' + e.message
-            exit 1
-          end
-        "
+            puts '✓ FB gem loaded successfully'
+          " || exit 1
 
-    - name: Wait for Firebird Service
-      run: |
-        # Agregar firebird al PATH
-        export PATH=$PATH:/usr/lib/x86_64-linux-gnu/firebird/5.0/bin:/opt/firebird/bin
+      - name: Wait for Firebird Service
+        run: |
+          export PATH=\$PATH:/usr/lib/x86_64-linux-gnu/firebird/5.0/bin:/opt/firebird/bin
+          
+          echo "Waiting for Firebird service on port 3050..."
+          for i in {1..60}; do
+            if nc -z localhost 3050 2>/dev/null; then
+              echo "✓ Port 3050 is open"
+              break
+            fi
+            if [ \$i -eq 60 ]; then
+              echo "✗ Timeout waiting for port 3050"
+              exit 1
+            fi
+            sleep 1
+          done
 
-        echo "Waiting for Firebird service on port 3050..."
-        for i in {1..30}; do
-          if nc -z localhost 3050 2>/dev/null; then
-            echo "✓ Port 3050 is open"
-            break
-          fi
-          echo "Waiting... ($i/30)"
-          sleep 2
-        done
+          echo "Testing database connectivity..."
+          for i in {1..30}; do
+            if echo "SELECT 1 FROM RDB\\\$DATABASE;" | isql-fb -user SYSDBA -password masterkey localhost:3050 2>&1 | grep -q "1"; then
+              echo "✓ Firebird database is ready"
+              exit 0
+            fi
+            if [ \$i -eq 30 ]; then
+              echo "✗ Timeout waiting for database"
+              exit 1
+            fi
+            sleep 1
+          done
 
-        echo "Testing database connectivity..."
-        for i in {1..15}; do
-          if echo "SELECT 1 FROM RDB\$DATABASE;" | isql-fb -user SYSDBA -password masterkey localhost:3050 2>&1 | grep -q "1"; then
-            echo "✓ Database is ready and accessible"
-            exit 0
-          fi
-          echo "Waiting for database... ($i/15)"
-          sleep 2
-        done
-        echo "✗ Timeout: Firebird database not ready"
-        exit 1
+      - name: Create Test Reports Directory
+        run: mkdir -p spec/reports
 
-    - name: Run Tests
-      env:
-        FIREBIRD_HOST: localhost
-        FIREBIRD_PORT: 3050
-        FIREBIRD_USER: SYSDBA
-        FIREBIRD_PASSWORD: masterkey
-        FIREBIRD_DATABASE: /tmp/test.fdb
-      run: |
-        echo "Running syntax check..."
-        bundle exec ruby -c lib/firebird_adapter.rb || exit 1
+      - name: Run RSpec Tests
+        env:
+          FIREBIRD_HOST: localhost
+          FIREBIRD_PORT: 3050
+          FIREBIRD_USER: SYSDBA
+          FIREBIRD_PASSWORD: masterkey
+          FIREBIRD_DATABASE: /tmp/test.fdb
+        run: |
+          bundle exec rspec \
+            --format documentation \
+            --format RspecJunitFormatter \
+            --out spec/reports/rspec.xml \
+            --color \
+            --require spec_helper
 
-        echo -e "\nRunning RSpec tests..."
-        bundle exec rspec --format documentation --color || exit 1
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: spec/reports
+          retention-days: 30
 
-    - name: Upload Test Results
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-results
-        path: spec/reports
-        retention-days: 7
+      - name: Publish Test Results
+        if: always()
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: spec/reports/rspec.xml
+          check_name: RSpec Test Results
+          comment_mode: always
