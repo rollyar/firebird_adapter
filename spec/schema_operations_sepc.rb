@@ -8,7 +8,9 @@ RSpec.describe "Schema Operations" do
   after(:each) do
     # Limpiar tablas de test creadas
     %w[test_table users products orders].each do |table|
-      connection.drop_table(table, if_exists: true) rescue nil
+      connection.drop_table(table, if_exists: true)
+    rescue StandardError
+      nil
     end
   end
 
@@ -127,15 +129,15 @@ RSpec.describe "Schema Operations" do
     end
 
     it "drops table if exists" do
-      expect {
+      expect do
         connection.drop_table :nonexistent_table, if_exists: true
-      }.not_to raise_error
+      end.not_to raise_error
     end
 
     it "raises error when dropping non-existent table without if_exists" do
-      expect {
+      expect do
         connection.drop_table :nonexistent_table
-      }.to raise_error(ActiveRecord::StatementInvalid)
+      end.to raise_error(ActiveRecord::StatementInvalid)
     end
   end
 
@@ -144,6 +146,23 @@ RSpec.describe "Schema Operations" do
       connection.create_table :test_table do |t|
         t.string :name
         t.integer :age
+      end
+    end
+
+    describe "RENAME TABLE" do
+      it "renames a table" do
+        expect(connection.table_exists?(:test_table)).to be true
+
+        connection.rename_table :test_table, :renamed_table
+
+        expect(connection.table_exists?(:renamed_table)).to be true
+        expect(connection.table_exists?(:test_table)).to be false
+      end
+
+      it "raises error when renaming non-existent table" do
+        expect do
+          connection.rename_table :nonexistent_table, :new_name
+        end.to raise_error(ActiveRecord::TableNotFound)
       end
     end
 
@@ -157,7 +176,7 @@ RSpec.describe "Schema Operations" do
 
       it "adds column with options" do
         connection.add_column :test_table, :status, :string,
-                             default: "active", null: false
+                              default: "active", null: false
 
         status_col = connection.columns(:test_table).find { |c| c.name == "status" }
         expect(status_col.null).to be false
@@ -236,10 +255,10 @@ RSpec.describe "Schema Operations" do
     end
 
     it "adds a composite index" do
-      connection.add_index :test_table, [:user_id, :email]
+      connection.add_index :test_table, %i[user_id email]
 
       indexes = connection.indexes(:test_table)
-      composite_index = indexes.find { |i| i.columns == ["user_id", "email"] }
+      composite_index = indexes.find { |i| i.columns == %w[user_id email] }
 
       expect(composite_index).not_to be_nil
     end
@@ -256,8 +275,8 @@ RSpec.describe "Schema Operations" do
         skip unless connection.supports_partial_index?
 
         connection.add_index :test_table, :email,
-                            where: "user_id IS NOT NULL",
-                            name: "idx_email_with_user"
+                             where: "user_id IS NOT NULL",
+                             name: "idx_email_with_user"
 
         indexes = connection.indexes(:test_table)
         partial_index = indexes.find { |i| i.name == "idx_email_with_user" }
@@ -381,15 +400,15 @@ RSpec.describe "Schema Operations" do
     end
 
     it "adds table comment" do
-      expect {
+      expect do
         connection.add_table_comment :test_table, "This is a test table"
-      }.not_to raise_error
+      end.not_to raise_error
     end
 
     it "adds column comment" do
-      expect {
+      expect do
         connection.add_column_comment :test_table, :name, "User's full name"
-      }.not_to raise_error
+      end.not_to raise_error
     end
   end
 

@@ -382,31 +382,8 @@ module ActiveRecord
         execute_and_clear("EXPLAIN PLAN #{sql}", "SCHEMA", binds)
       end
 
-      def supports_transaction_isolation?
-        true # Firebird supports transaction isolation levels
-      end
-
-      def transaction_isolation_level_options
-        %i[read_committed repeatable_read serializable read_uncommitted]
-      end
-
       def supports_deferrable_constraints?
         false # Firebird doesn't support deferrable constraints
-      end
-
-      def supports_datetime_with_precision?
-        firebird_version >= 40_000 # Firebird 4.0+ supports fractional seconds
-      end
-
-      def supports_timezones?
-        return @supports_time_zones unless @supports_time_zones.nil?
-
-        begin
-          @supports_time_zones = firebird_version && firebird_version >= 40_000
-        rescue StandardError => e
-          puts "Error obteniendo soporte de time zones: #{e.message}"
-          @supports_time_zones = false
-        end
       end
 
       def supports_decfloat?
@@ -426,7 +403,7 @@ module ActiveRecord
         types = super
         types[:boolean] = { name: "BOOLEAN" } if supports_boolean_type?
         types[:decfloat] = { name: "DECFLOAT" } if supports_decfloat?
-        types[:time_with_timezone] = { name: "TIME WITH TIME ZONE" } if supports_timezones?
+        types[:time_with_timezone] = { name: "TIME WITH TIME ZONE" } if supports_time_zones?
         types[:timestamp_with_timezone] = { name: "TIMESTAMP WITH TIME ZONE" } if supports_timestamp_with_timezone?
         # Ensure basic types are always available
         types[:string] = { name: "VARCHAR", limit: 255 }
@@ -595,7 +572,7 @@ module ActiveRecord
       end
 
       def select_value(sql, name = nil, allow_retry: false)
-        result = select_all(sql, name, allow_retry: allow_retry)
+        result = select_all(sql, name)
 
         return nil unless result.respond_to?(:rows) && result.rows.any?
         return nil unless result.rows.first&.any?

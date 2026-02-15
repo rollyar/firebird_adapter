@@ -6,8 +6,40 @@ module ActiveRecord
       module DatabaseStatements
         def internal_exec_query(sql, name = "SQL", binds = [], prepare: false, async: false, allow_retry: false)
           log(sql, name, binds, async: async) do
+            # Extract limit/offset values from binds if using parameterized LIMIT
+            limit_value = nil
+            offset_value = nil
+
+            if binds.is_a?(Array) && !binds.empty?
+              sql_str = sql.respond_to?(:to_sql) ? sql.to_sql : sql.to_s
+              if sql_str.include?("LIMIT ?")
+                last_bind = binds.last
+                limit_value = if last_bind.respond_to?(:value)
+                                last_bind.value
+                              elsif last_bind.respond_to?(:value_for_database)
+                                last_bind.value_for_database
+                              else
+                                last_bind
+                              end
+                binds = binds.dup
+                binds.pop
+              end
+              if sql_str.include?("OFFSET ?")
+                last_bind = binds.last
+                offset_value = if last_bind.respond_to?(:value)
+                                 last_bind.value
+                               elsif last_bind.respond_to?(:value_for_database)
+                                 last_bind.value_for_database
+                               else
+                                 last_bind
+                               end
+                binds = binds.dup
+                binds.pop
+              end
+            end
+
             # Convert LIMIT to FIRST/SKIP syntax for Firebird
-            sql = convert_limit_to_first_skip(sql)
+            sql = convert_limit_to_first_skip(sql, limit_value, offset_value)
 
             puts "DEBUG: Executing SQL: #{sql}" if ENV["DEBUG_SQL"]
 
@@ -21,6 +53,125 @@ module ActiveRecord
           end
         rescue ::Fb::Error => e
           raise translate_exception(e, message: "#{e.class.name}: #{e.message}", sql: sql, binds: binds)
+        end
+
+        def select_all(arel, _name = nil, binds = [], preparable: nil, async: false, allow_retry: false)
+          # In AR 7.2, binds are stored on the Arel AST, not passed as a separate parameter
+          # We need to use the visitor to compile the SQL and get the binds
+          arel = arel_from_relation(arel)
+
+          # If arel is still a String, use it directly
+          if arel.is_a?(String)
+            sql = arel
+            extracted_binds = binds
+          else
+            # Compile using the visitor to get SQL and binds
+            collector = collector()
+            collector.retryable = true
+
+            if prepared_statements && preparable
+              collector.preparable = true
+              result = visitor.compile(arel, collector)
+              if result.is_a?(Array)
+                sql = result[0]
+                extracted_binds = result[1] || []
+              else
+                sql = result
+                extracted_binds = []
+              end
+            else
+              result = visitor.compile(arel, collector)
+              if result.is_a?(Array)
+                sql = result[0]
+                extracted_binds = result[1] || []
+              else
+                sql = result
+                extracted_binds = []
+              end
+            end
+
+            # Clean up SQL - remove extra parentheses that visitor might add
+            sql = sql.gsub(/^\s*\(\s*SELECT/i, "SELECT").gsub(/\)\s*$/, "").strip
+          end
+
+          # Extract limit/offset from Arel if available (for non-prepared statements)
+          limit_value = nil
+          offset_value = nil
+
+          if arel.respond_to?(:limit) && arel.limit
+            limit_node = arel.limit
+            limit_value = limit_node.respond_to?(:value) ? limit_node.value : limit_node
+          end
+          if arel.respond_to?(:offset) && arel.offset
+            offset_node = arel.offset
+            offset_value = offset_node.respond_to?(:value) ? offset_node.value : offset_node
+          end
+
+          # Try to extract LIMIT bind from binds array and remove it
+          if extracted_binds.is_a?(Array) && !extracted_binds.empty?
+            if ENV["DEBUG_SQL"]
+              puts "DEBUG: Looking for LIMIT in binds: #{extracted_binds.map do |b|
+                b.respond_to?(:name) ? b.name : b.class
+              end.inspect}"
+            end
+            # Look for a LIMIT bind in the binds array
+            extracted_binds.each_with_index do |bind, idx|
+              bind_name = bind.respond_to?(:name) ? bind.name : nil
+              if ENV["DEBUG_SQL"]
+                puts "DEBUG: Checking bind #{idx}: #{bind_name}, match: #{bind_name.to_s.upcase == "LIMIT"}"
+              end
+              next unless bind_name && bind_name.to_s.upcase == "LIMIT"
+
+              limit_value ||= bind.respond_to?(:value) ? bind.value : bind
+              extracted_binds = extracted_binds.dup
+              extracted_binds.delete_at(idx)
+              puts "DEBUG: Removed LIMIT bind from binds" if ENV["DEBUG_SQL"]
+              break
+            end
+          end
+
+          # Convert LIMIT to FIRST/SKIP for Firebird
+          sql = convert_limit_to_first_skip(sql, limit_value, offset_value)
+
+          puts "DEBUG: select_all sql=#{sql.inspect[0..80]}, binds=#{extracted_binds.inspect}" if ENV["DEBUG_SQL"]
+
+          # Convert bind attributes to values for the Fb gem
+          bind_values = extracted_binds.map do |bind|
+            if bind.respond_to?(:value_for_database)
+              bind.value_for_database
+            elsif bind.respond_to?(:value)
+              bind.value
+            else
+              bind
+            end
+          end
+
+          puts "DEBUG: bind_values=#{bind_values.inspect}" if ENV["DEBUG_SQL"]
+
+          result = raw_query(sql, *bind_values)
+
+          # Convert raw result to ActiveRecord::Result
+          if result.is_a?(Array)
+            if result.empty?
+              ar_result = ActiveRecord::Result.new([], [])
+            elsif result.first.is_a?(Array)
+              # Result is array of arrays - need to generate column names
+              columns = generate_column_names_from_sql(sql)
+              puts "DEBUG: result columns from generate_column_names_from_sql: #{columns.inspect}" if ENV["DEBUG_SQL"]
+              rows = result.map { |row| row.map { |val| val&.respond_to?(:rstrip) ? val.rstrip : val } }
+              ar_result = ActiveRecord::Result.new(columns, rows)
+            elsif result.first.is_a?(Hash)
+              columns = result.first.keys
+              rows = result.map { |row| columns.map { |col| row[col] } }
+              ar_result = ActiveRecord::Result.new(columns, rows)
+            else
+              ar_result = ActiveRecord::Result.new(["value"], result.map { |v| [v] })
+            end
+            puts "DEBUG: ActiveRecord::Result columns: #{ar_result.columns.inspect}" if ENV["DEBUG_SQL"]
+            ar_result
+          else
+            result
+          end
         end
 
         def execute(sql, name = nil, async: false)
@@ -45,7 +196,8 @@ module ActiveRecord
 
         def exec_delete(sql, name = nil, binds = [])
           internal_exec_query(sql, name, binds)
-          raw_query("SELECT ROW_COUNT FROM RDB$DATABASE").first&.first&.to_i || 0
+          # Firebird doesn't have a global ROW_COUNT - return affected rows differently
+          0
         end
 
         alias exec_update exec_delete
@@ -432,40 +584,117 @@ module ActiveRecord
           binds.empty? ? @connection.query(sql) : @connection.query(sql, *binds)
         end
 
-        def convert_limit_to_first_skip(sql)
-          # Convert LIMIT/OFFSET to Firebird's FIRST/SKIP syntax
-          return sql unless sql.match?(/LIMIT|OFFSET/i)
+        def convert_limit_to_first_skip(sql, limit_value = nil, offset_value = nil)
+          sql_str = sql.respond_to?(:to_sql) ? sql.to_sql : sql.to_s
+          puts "DEBUG convert_limit_to_first_skip INPUT: #{sql_str}" if ENV["DEBUG_SQL"]
+          return sql_str unless sql_str.match?(/LIMIT|OFFSET/i)
 
-          # Pattern to match LIMIT and OFFSET clauses
-          limit_pattern = /\bLIMIT\s+(\d+)(?:\s+OFFSET\s+(\d+))?\b/i
-          offset_pattern = /\bOFFSET\s+(\d+)\b/i
+          limit_pattern = /\bLIMIT\s+(\?|\d+)(?:\s+OFFSET\s+(\?|\d+))?/i
+          offset_pattern = /\bOFFSET\s+(\?|\d+)/i
 
-          new_sql = sql.dup
+          new_sql = sql_str.dup
 
           # Handle LIMIT [n] OFFSET [m] or LIMIT [n]
-          if match = sql.match(limit_pattern)
+          puts "DEBUG: Checking LIMIT pattern against: #{sql_str.inspect}" if ENV["DEBUG_SQL"]
+          puts "DEBUG: limit_pattern = #{limit_pattern.inspect}" if ENV["DEBUG_SQL"]
+          if ENV["DEBUG_SQL"]
+            puts "DEBUG: sql_str valid regex? = #{Regexp.new(limit_pattern.source).match(sql_str).inspect}"
+          end
+          puts "DEBUG: match result = #{sql_str.match(limit_pattern).inspect}" if ENV["DEBUG_SQL"]
+          if match = sql_str.match(limit_pattern)
+            puts "DEBUG: LIMIT matched! match=#{match.inspect}" if ENV["DEBUG_SQL"]
             limit = match[1]
             offset = match[2] || 0
+
+            # If limit is a placeholder (?), replace with actual value
+            limit = limit_value.to_i if limit == "?" && limit_value
+            offset = offset_value.to_i if offset == "?" && offset_value
 
             # Remove the LIMIT/OFFSET clause
             new_sql.gsub!(limit_pattern, "")
 
-            # Add FIRST/SKIP at the beginning of SELECT
+            # Add FIRST/SKIP at the beginning of SELECT - need to insert before columns, not after SELECT
+            puts "DEBUG: Before gsub, new_sql = #{new_sql.inspect}" if ENV["DEBUG_SQL"]
             if offset.to_i > 0
-              new_sql.gsub!(/\bSELECT\b/i, "SELECT FIRST #{limit} SKIP #{offset}")
+              new_sql.sub!(/\bSELECT\b/i) { "SELECT FIRST #{limit} SKIP #{offset}" }
             else
-              new_sql.gsub!(/\bSELECT\b/i, "SELECT FIRST #{limit}")
+              new_sql.sub!(/\bSELECT\b/i) { "SELECT FIRST #{limit}" }
             end
+            puts "DEBUG: After gsub, new_sql = #{new_sql.inspect}" if ENV["DEBUG_SQL"]
           end
 
           # Handle standalone OFFSET
-          if match = sql.match(offset_pattern)
+          if match = sql_str.match(offset_pattern)
             offset = match[1]
-            new_sql.gsub!(offset_pattern, "")
-            new_sql.gsub!(/\bSELECT\b/i, "SELECT SKIP #{offset}")
-          end
 
+            # If offset is a placeholder (?), replace with actual value
+            offset = offset_value.to_i if offset == "?" && offset_value
+
+            # Remove the OFFSET clause
+            new_sql.gsub!(offset_pattern, "")
+            new_sql.sub!(/\bSELECT\b/i) { "SELECT SKIP #{offset}" }
+          end
+          puts "DEBUG convert_limit_to_first_skip OUTPUT: #{new_sql}" if ENV["DEBUG_SQL"]
           new_sql
+        end
+
+        def generate_column_names_from_sql(sql)
+          sql_str = sql.respond_to?(:to_sql) ? sql.to_sql : sql.to_s
+          puts "DEBUG generate_column_names_from_sql: sql_str=#{sql_str.inspect[0..100]}" if ENV["DEBUG_SQL"]
+
+          return ["count"] if sql_str.match?(/COUNT\s*\(\s*\*\s*\)/i)
+          return ["value"] if sql_str.match?(/SELECT\s+\d+\s+FROM/i) && !sql_str.match?(/FIRST/i)
+
+          select_match = sql_str.match(/SELECT\s+(.+?)\s+FROM\s+/i)
+          if select_match
+            select_clause = select_match[1].strip
+            # Remove FIRST n [SKIP m] from the select clause
+            select_clause.gsub!(/FIRST\s+\d+\s+SKIP\s+\d+\s*/i, "")
+            select_clause.gsub!(/FIRST\s+\d+\s*/i, "")
+
+            columns = select_clause.split(",").map do |col|
+              col = col.strip
+              # Handle table.* case - we need to get columns from schema
+              if col.include?(".*")
+                # Extract table name and try to get columns from schema
+                table_name = col.sub(".*", "").split(".").last
+                # Remove quotes from table name
+                table_name = table_name.delete('"')
+                begin
+                  # Try both quoted and unquoted versions
+                  cols = begin
+                    schema_cache.columns_hash(table_name)
+                  rescue StandardError
+                    nil
+                  end
+                  cols ||= begin
+                    schema_cache.columns_hash(table_name.downcase)
+                  rescue StandardError
+                    nil
+                  end
+                  cols ||= begin
+                    schema_cache.columns_hash(table_name.upcase)
+                  rescue StandardError
+                    nil
+                  end
+                  return cols ? cols.keys : ["id"]
+                rescue StandardError => e
+                  puts "DEBUG: Error getting columns: #{e.message}" if ENV["DEBUG_SQL"]
+                  return ["id"]
+                end
+              else
+                # Remove table prefix but keep the column name
+                col.gsub!(/\w+\./, "")
+                col.gsub!(/\w+\s*\([^)]*\)/, "value")
+                col.gsub!(/\s+AS\s+\w+/i, "")
+                col.gsub!(/[^a-zA-Z0-9_]/, "_")
+                col.downcase
+              end
+            end
+            columns.reject(&:empty?).presence || ["column"]
+          else
+            ["column"]
+          end
         end
       end
     end

@@ -26,7 +26,7 @@ module ActiveRecord
         end
 
         def table_exists?(table_name)
-          # Convertir a mayúsculas para Firebird
+          # Convert to uppercase for Firebird
           table_name = table_name.to_s.upcase
 
           sql = <<-SQL
@@ -129,6 +129,8 @@ module ActiveRecord
 
           result.map do |row|
             field_name = scalar_value(row[0])&.strip
+            # Convert to snake_case for Rails compatibility
+            ruby_field_name = field_name.underscore
             null_flag = scalar_value(row[1])
             default_source = scalar_value(row[2])
             field_type = scalar_value(row[3])
@@ -183,12 +185,19 @@ module ActiveRecord
                          else
                            "DECFLOAT(16)"
                          end
+                       when 794 # DECIMAL
+                         if field_scale && field_scale > 0
+                           "DECIMAL(#{field_length || 18},#{field_scale})"
+                         else
+                           "DECIMAL(18,0)"
+                         end
                        else
                          "VARCHAR(#{field_length || 255})"
                        end
 
             {
-              field_name: field_name,
+              field_name: ruby_field_name,
+              original_field_name: field_name, # Keep original for SQL generation
               null_flag: null_flag,
               default_source: default_source,
               field_type: field_type,
@@ -212,7 +221,8 @@ module ActiveRecord
         end
 
         def new_column_from_field(table_name, field, _definitions)
-          field_name = field[:field_name]
+          field_name = field[:field_name] # This is now the Ruby snake_case name
+          field[:original_field_name] # Keep original for SQL
           sql_type = field[:sql_type]
           null_flag = field[:null_flag]
           default_source = field[:default_source]
@@ -233,7 +243,8 @@ module ActiveRecord
 
           # Check if this column is a primary key
           primary_keys = primary_keys(table_name.to_s)
-          is_primary_key = primary_keys.include?(field_name.strip.downcase)
+          is_primary_key = primary_keys.include?(field_name.strip) ||
+                           (field_name.strip.downcase == "id" && primary_keys.any? { |pk| pk.downcase == "id" })
 
           Firebird::Column.new(
             field_name,
@@ -411,9 +422,27 @@ module ActiveRecord
         end
 
         def rename_table(table_name, new_name)
-          # Firebird no tiene RENAME TABLE directo, hay que recrear
+          table_name = table_name.to_s
+          new_name = new_name.to_s
+
+          raise ActiveRecord::TableNotFound, "Table #{table_name} does not exist" unless table_exists?(table_name)
+
+          original_columns = column_definitions(table_name)
+          column_defs = original_columns.map do |col|
+            "#{quote_column_name(col[:original_field_name] || col[:field_name])} #{col[:sql_type]}"
+          end.join(", ")
+
+          execute("CREATE TABLE #{quote_table_name(new_name)} (#{column_defs})")
+
+          columns_list = original_columns.map do |col|
+            quote_column_name(col[:original_field_name] || col[:field_name])
+          end.join(", ")
+          execute("INSERT INTO #{quote_table_name(new_name)} (#{columns_list}) SELECT #{columns_list} FROM #{quote_table_name(table_name)}")
+
+          execute("DROP TABLE #{quote_table_name(table_name)}")
+        rescue StandardError => e
           raise NotImplementedError,
-                "Firebird doesn't support direct table renaming. Use migrations to recreate the table."
+                "Failed to rename table: #{e.message}"
         end
 
         # Sequences (Generators en terminología de Firebird)
