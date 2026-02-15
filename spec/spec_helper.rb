@@ -25,6 +25,8 @@ DB_CONFIG = {
 is_local_db = !ENV["FIREBIRD_HOST"] && !ENV["DB_HOST"] && !DB_PATH.include?(":")
 File.delete(DB_PATH) if is_local_db && File.exist?(DB_PATH)
 
+puts "DEBUG: DB_CONFIG = #{DB_CONFIG.inspect}"
+
 if is_local_db || !File.exist?(DB_PATH)
   begin
     ::Fb::Database.create(
