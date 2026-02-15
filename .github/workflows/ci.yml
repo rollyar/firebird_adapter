@@ -16,10 +16,10 @@ jobs:
         env:
           ISC_PASSWORD: masterkey
         options: >-
-          --health-cmd "bash -c 'echo \"SELECT 1 FROM RDB\$DATABASE;\" | isql-fb -user SYSDBA -password masterkey localhost:3050'"
+          --health-cmd "bash -c 'echo \"SELECT 1 FROM RDB\\\$DATABASE;\" | isql-fb -user SYSDBA -password masterkey localhost:3050 2>&1 | grep -q \"1\"'"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
         ports:
           - 3050:3050
 
@@ -42,84 +42,93 @@ jobs:
         echo "FIREBIRD_LIB=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
         echo "ISC_PASSWORD=masterkey" >> $GITHUB_ENV
 
-    - name: Verify Firebird Installation
+    - name: Verify Firebird Client Installation
       run: |
-        echo "Checking Firebird client installation..."
-        dpkg -l | grep firebird
-        ls -la /usr/include/firebird/ 2>/dev/null || echo "Headers directory not found"
-        find /usr -name "ibase.h" 2>/dev/null | head -5
+        echo "=== Firebird packages installed ==="
+        dpkg -l | grep -i firebird
+
+        echo -e "\n=== Firebird headers ==="
+        ls -la /usr/include/firebird/ 2>/dev/null || echo "Headers not found"
+
+        echo -e "\n=== ibase.h location ==="
+        find /usr -name "ibase.h" 2>/dev/null | head -3
 
     - name: Install Dependencies
-      run: |
-        bundle install
+      run: bundle install
 
     - name: Verify FB Gem Installation
       run: |
-        bundle list | grep fb || echo "FB gem not in bundle"
-        ruby -e "begin; require 'fb'; puts 'FB gem version: ' + Fb::VERSION; rescue LoadError => e; puts 'Error: ' + e.message; end"
+        echo "=== Bundle list ==="
+        bundle list | grep -i fb || echo "FB gem not found in bundle"
 
-    - name: Wait for Firebird Service
-      run: |
-        echo "Waiting for Firebird service to be ready..."
-        timeout 60s bash -c '
-          while ! nc -z localhost 3050; do
-            echo "Waiting for Firebird... (checking port 3050)"
-            sleep 2
-          done
-          echo "Firebird port is open!"
-
-          # Additional check: try to connect
-          for i in {1..10}; do
-            if echo "SELECT 1 FROM RDB\$DATABASE;" | isql-fb -user SYSDBA -password masterkey localhost:3050 2>&1 | grep -q "1"; then
-              echo "Firebird database is accessible!"
-              exit 0
-            fi
-            echo "Waiting for database to be ready... ($i/10)"
-            sleep 2
-          done
-          echo "Timeout waiting for Firebird database"
-          exit 1
-        '
-
-    - name: Test Firebird Connection
-      run: |
-        echo "Testing Firebird connection..."
-        echo "SELECT 1 FROM RDB\$DATABASE;" | isql-fb -user SYSDBA -password masterkey localhost:3050
-
+        echo -e "\n=== Ruby FB gem test ==="
         ruby -e "
-          require 'fb'
           begin
-            conn = Fb::Database.connect(
-              :database => 'localhost:3050:/tmp/test.fdb',
-              :username => 'SYSDBA',
-              :password => 'masterkey'
-            )
-            puts 'Connection successful!'
-            conn.disconnect
-          rescue => e
-            puts 'Connection failed: ' + e.message
+            require 'fb'
+            puts 'FB gem loaded successfully'
+            puts 'Version: ' + (defined?(Fb::VERSION) ? Fb::VERSION : 'unknown')
+          rescue LoadError => e
+            puts 'ERROR: ' + e.message
             exit 1
           end
         "
 
+    - name: Wait for Firebird Service
+      run: |
+        echo "Waiting for Firebird service on port 3050..."
+        for i in {1..30}; do
+          if nc -z localhost 3050 2>/dev/null; then
+            echo "✓ Port 3050 is open"
+            break
+          fi
+          echo "Waiting... ($i/30)"
+          sleep 2
+        done
+
+        echo "Testing database connectivity..."
+        for i in {1..15}; do
+          if echo "SELECT 1 FROM RDB\$DATABASE;" | isql-fb -user SYSDBA -password masterkey localhost:3050 2>&1 | grep -q "1"; then
+            echo "✓ Database is ready and accessible"
+            exit 0
+          fi
+          echo "Waiting for database... ($i/15)"
+          sleep 2
+        done
+        echo "✗ Timeout: Firebird database not ready"
+        exit 1
+
+    - name: Create Test Database
+      run: |
+        DB_PATH="/tmp/test.fdb"
+        echo "Creating test database at $DB_PATH..."
+        echo "CREATE DATABASE '$DB_PATH' USER 'SYSDBA' PASSWORD 'masterkey';" | isql-fb -user SYSDBA -password masterkey
+
+        if [ -f "$DB_PATH" ]; then
+          echo "✓ Database created successfully"
+          ls -lh "$DB_PATH"
+        else
+          echo "✗ Database creation failed"
+          exit 1
+        fi
+
     - name: Run Tests
       env:
-        DB_HOST: localhost
         FIREBIRD_HOST: localhost
         FIREBIRD_PORT: 3050
         FIREBIRD_USER: SYSDBA
         FIREBIRD_PASSWORD: masterkey
+        FIREBIRD_DATABASE: /tmp/test.fdb
       run: |
         echo "Running syntax check..."
         ruby -c lib/firebird_adapter.rb || exit 1
 
-        echo "Running RSpec tests..."
-        bundle exec rspec --format documentation --color
+        echo -e "\nRunning RSpec tests..."
+        bundle exec rspec --format documentation --color --format RSpec::JUnitReporter --out tmp/test-results.xml || exit 1
 
     - name: Upload Test Results
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: test-results
         path: tmp/test-results.xml
-        if-no-files-found: ignore
+        retention-days: 7
