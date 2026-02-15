@@ -8,7 +8,21 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-22.04  # Use Ubuntu 22.04 which has Firebird packages
+    runs-on: ubuntu-22.04
+
+    services:
+      firebird:
+        image: jacobalberty/firebird:5.0
+        env:
+          FIREBIRD_PASSWORD: masterkey
+          ISC_PASSWORD: masterkey
+        ports:
+          - 3050:3050
+        options: >-
+          --health-cmd "isql-fb -user SYSDBA -password masterkey 'localhost:/firebird/data/test.fdb'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
     - name: Checkout
@@ -22,13 +36,11 @@ jobs:
 
     - name: Install Firebird Client Libraries
       run: |
-        # Install Firebird client development libraries
         sudo apt-get update
         sudo apt-get install -y firebird-dev libfbclient2
-
-        # Set environment variables for fb gem compilation
         echo "FIREBIRD_INCLUDE=/usr/include/firebird" >> $GITHUB_ENV
         echo "FIREBIRD_LIB=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+
     - name: Check Firebird Headers
       run: |
         ls -la /usr/include/firebird/ || echo "No firebird headers found"
@@ -37,19 +49,23 @@ jobs:
     - name: Install Dependencies
       run: |
         bundle install
+
     - name: Check Installation
       run: |
         bundle list | grep fb
         ruby -r fb -e "puts 'FB gem loaded successfully'" || echo "FB gem not available"
+
+    - name: Wait for Firebird
+      run: |
+        echo "Waiting for Firebird to be ready..."
+        sleep 10
+
     - name: Run Tests
+      env:
+        DB_HOST: firebird
       run: |
         echo "Running basic tests..."
         ruby -c lib/firebird_adapter.rb
 
-        # Try to run rspec if available
-        if bundle exec rspec --version > /dev/null 2>&1; then
-          echo "Running RSpec tests..."
-          bundle exec rspec --format documentation || true
-        else
-          echo "RSpec not available, skipping tests"
-        fi
+        echo "Running RSpec tests..."
+        bundle exec rspec --format documentation || true
