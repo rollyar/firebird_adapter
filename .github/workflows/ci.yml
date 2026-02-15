@@ -8,7 +8,6 @@ on:
 
 env:
   RUBY_VERSION: '3.3.6'
-  FIREBIRD_VERSION: 'latest'
 
 jobs:
   # Linting job
@@ -22,7 +21,7 @@ jobs:
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: ${{ env.RUBY_VERSION }}
+          ruby-version: '3.3.6'
           bundler-cache: true
 
       - name: Run RuboCop
@@ -39,7 +38,7 @@ jobs:
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: ${{ env.RUBY_VERSION }}
+          ruby-version: '3.3.6'
 
       - name: Verify Ruby Syntax
         run: |
@@ -57,7 +56,7 @@ jobs:
 
     services:
       firebird:
-        image: firebirdsql/firebird:${{ env.FIREBIRD_VERSION }}
+        image: firebirdsql/firebird:latest
         env:
           ISC_PASSWORD: masterkey
         options: >-
@@ -85,7 +84,7 @@ jobs:
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: ${{ env.RUBY_VERSION }}
+          ruby-version: '3.3.6'
           bundler-cache: true
 
       - name: Verify FB Gem Installation
