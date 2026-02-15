@@ -30,7 +30,7 @@ jobs:
     - name: Install Firebird Client Libraries
       run: |
         sudo apt-get update
-        sudo apt-get install -y firebird-dev libfbclient2 netcat-openbsd isql-fb
+        sudo apt-get install -y firebird-dev libfbclient2 netcat-openbsd
 
         # Verificar ubicación de headers
         echo "=== Buscando ibase.h ==="
@@ -41,11 +41,6 @@ jobs:
           sudo ln -sf /usr/include/firebird/ibase.h /usr/include/ibase.h
           echo "Creado symlink para ibase.h"
         fi
-
-        # Agregar firebird al PATH
-        export PATH=$PATH:/usr/lib/x86_64-linux-gnu/firebird/5.0/bin:/opt/firebird/bin
-        echo "PATH actual: $PATH"
-        which isql-fb || find /usr -name "isql-fb" 2>/dev/null
 
     - name: Setup Ruby
       uses: ruby/setup-ruby@v1
@@ -103,23 +98,6 @@ jobs:
         done
         echo "✗ Timeout: Firebird database not ready"
         exit 1
-
-    - name: Create Test Database
-      run: |
-        # Agregar firebird al PATH
-        export PATH=$PATH:/usr/lib/x86_64-linux-gnu/firebird/5.0/bin:/opt/firebird/bin
-
-        DB_PATH="/tmp/test.fdb"
-        echo "Creating test database at $DB_PATH..."
-        echo "CREATE DATABASE '$DB_PATH' USER 'SYSDBA' PASSWORD 'masterkey';" | isql-fb -user SYSDBA -password masterkey
-
-        if [ -f "$DB_PATH" ]; then
-          echo "✓ Database created successfully"
-          ls -lh "$DB_PATH"
-        else
-          echo "✗ Database creation failed"
-          exit 1
-        fi
 
     - name: Run Tests
       env:

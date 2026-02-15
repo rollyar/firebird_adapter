@@ -9,8 +9,6 @@ require "firebird_adapter"
 require "rspec"
 
 DB_PATH = ENV["FIREBIRD_DATABASE"] || File.expand_path("test.fdb", __dir__)
-
-# Database configuration - must be available to all specs
 DB_CONFIG = {
   adapter: "firebird",
   database: DB_PATH,
@@ -20,19 +18,19 @@ DB_CONFIG = {
   downcase: false,
   host: ENV["DB_HOST"] || "localhost"
 }.freeze
+is_local_db = !ENV["FIREBIRD_HOST"] && !DB_PATH.include?(":")
+File.delete(DB_PATH) if is_local_db && File.exist?(DB_PATH)
 
-# Clean up old database
-File.delete(DB_PATH) if File.exist?(DB_PATH)
-
-# Create database
-begin
-  ::Fb::Database.create(
-    database: DB_PATH,
-    user: "SYSDBA",
-    password: "masterkey"
-  )
-rescue StandardError => e
-  puts "Note: Database may already exist: #{e.message}"
+if is_local_db || !File.exist?(DB_PATH)
+  begin
+    ::Fb::Database.create(
+      database: DB_PATH,
+      user: "SYSDBA",
+      password: "masterkey"
+    )
+  rescue StandardError => e
+    puts "Note: Database may already exist or is remote: #{e.message}"
+  end
 end
 
 # Configure RSpec
@@ -76,7 +74,8 @@ RSpec.configure do |config|
 
   config.after(:suite) do
     ActiveRecord::Base.connection_pool.disconnect! if ActiveRecord::Base.connected?
-    File.delete(DB_PATH) if File.exist?(DB_PATH)
+    is_local = !ENV["FIREBIRD_HOST"] && !DB_PATH.include?(":")
+    File.delete(DB_PATH) if is_local && File.exist?(DB_PATH)
   rescue StandardError
     nil
   end
