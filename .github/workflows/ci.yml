@@ -27,42 +27,33 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
+    - name: Install Firebird Client Libraries
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y firebird-dev libfbclient2 netcat-openbsd
+
+        # Verificar ubicación de headers
+        echo "=== Buscando ibase.h ==="
+        find /usr -name "ibase.h" 2>/dev/null
+
+        # Crear symlink si es necesario
+        if [ -d /usr/include/firebird ] && [ ! -f /usr/include/ibase.h ]; then
+          sudo ln -sf /usr/include/firebird/ibase.h /usr/include/ibase.h
+          echo "Creado symlink para ibase.h"
+        fi
+
     - name: Setup Ruby
       uses: ruby/setup-ruby@v1
       with:
         ruby-version: '3.3.6'
         rubygems: latest
-        bundler-cache: true
-
-    - name: Install Firebird Client Libraries
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y firebird-dev libfbclient2 netcat-openbsd
-        
-        # Configurar variables para compilación de gemas nativas
-        echo "FIREBIRD_INCLUDE=/usr/include/firebird" >> $GITHUB_ENV
-        echo "FIREBIRD_LIB=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-        echo "LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LIBRARY_PATH" >> $GITHUB_ENV
-        echo "CPPFLAGS=-I/usr/include/firebird" >> $GITHUB_ENV
-        echo "LDFLAGS=-L/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-
-    - name: Verify Firebird Client Installation
-      run: |
-        echo "=== Firebird packages installed ==="
-        dpkg -l | grep -i firebird
-
-        echo -e "\n=== Firebird headers ==="
-        ls -la /usr/include/firebird/ 2>/dev/null || echo "Headers not found"
-
-        echo -e "\n=== ibase.h location ==="
-        find /usr -name "ibase.h" 2>/dev/null | head -3
+        bundler-cache: false
 
     - name: Install Dependencies
       run: |
-        rm -rf vendor/bundle
         bundle config set --local path 'vendor/bundle'
-        bundle config set --local build.fb "--with-firebird-include=/usr/include/firebird --with-firebird-lib=/usr/lib/x86_64-linux-gnu"
-        bundle install --retry=3
+        bundle config set --local jobs 4
+        bundle install
 
     - name: Verify FB Gem Installation
       run: |
