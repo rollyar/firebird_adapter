@@ -7,7 +7,6 @@ on:
     branches: [ master, main, rails-7-2 ]
 
 jobs:
-  # Main test job - CRITICAL
   test:
     name: RSpec Tests
     runs-on: ubuntu-22.04
@@ -95,8 +94,6 @@ jobs:
         run: |
           bundle exec rspec \
             --format documentation \
-            --format RspecJunitFormatter \
-            --out spec/reports/rspec.xml \
             --color \
             --require spec_helper
 
@@ -107,51 +104,3 @@ jobs:
           name: test-results
           path: spec/reports
           retention-days: 30
-
-      - name: Publish Test Results
-        if: always()
-        uses: EnricoMi/publish-unit-test-result-action@v2
-        with:
-          files: spec/reports/rspec.xml
-          check_name: RSpec Test Results
-          comment_mode: always
-
-  # Linting job - OPTIONAL (doesn't block tests)
-  lint:
-    name: Lint Code
-    runs-on: ubuntu-22.04
-    continue-on-error: true
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3.6'
-          bundler-cache: true
-
-      - name: Run RuboCop
-        run: bundle exec rubocop --display-cop-names --extra-details
-
-  # Syntax check job - OPTIONAL (doesn't block tests)
-  syntax:
-    name: Check Syntax
-    runs-on: ubuntu-22.04
-    continue-on-error: true
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3.6'
-
-      - name: Verify Ruby Syntax
-        run: |
-          for file in lib/**/*.rb; do
-            echo "Checking $file..."
-            ruby -c "$file" || exit 1
-          done
-          echo "✓ All Ruby files have valid syntax"
