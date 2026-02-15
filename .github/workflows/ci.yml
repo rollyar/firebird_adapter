@@ -47,10 +47,13 @@ jobs:
       with:
         ruby-version: '3.3.6'
         rubygems: latest
-        bundler-cache: true
+
+    - name: Clean vendor bundle
+      run: rm -rf vendor/bundle
 
     - name: Install Dependencies
       run: |
+        bundle config set --local path 'vendor/bundle'
         bundle install
 
     - name: Verify FB Gem Installation
