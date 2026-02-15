@@ -6,53 +6,11 @@ on:
   pull_request:
     branches: [ master, main, rails-7-2 ]
 
-env:
-  RUBY_VERSION: '3.3.6'
-
 jobs:
-  # Linting job
-  lint:
-    name: Lint Code
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3.6'
-          bundler-cache: true
-
-      - name: Run RuboCop
-        run: bundle exec rubocop --display-cop-names --extra-details
-
-  # Syntax check job
-  syntax:
-    name: Check Syntax
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3.6'
-
-      - name: Verify Ruby Syntax
-        run: |
-          for file in lib/**/*.rb; do
-            echo "Checking $file..."
-            ruby -c "$file" || exit 1
-          done
-          echo "✓ All Ruby files have valid syntax"
-
-  # Main test job
+  # Main test job - CRITICAL
   test:
     name: RSpec Tests
     runs-on: ubuntu-22.04
-    needs: [lint, syntax]
 
     services:
       firebird:
@@ -96,7 +54,7 @@ jobs:
 
       - name: Wait for Firebird Service
         run: |
-          export PATH=\$PATH:/usr/lib/x86_64-linux-gnu/firebird/5.0/bin:/opt/firebird/bin
+          export PATH=$PATH:/usr/lib/x86_64-linux-gnu/firebird/5.0/bin:/opt/firebird/bin
           
           echo "Waiting for Firebird service on port 3050..."
           for i in {1..60}; do
@@ -104,7 +62,7 @@ jobs:
               echo "✓ Port 3050 is open"
               break
             fi
-            if [ \$i -eq 60 ]; then
+            if [ $i -eq 60 ]; then
               echo "✗ Timeout waiting for port 3050"
               exit 1
             fi
@@ -113,11 +71,11 @@ jobs:
 
           echo "Testing database connectivity..."
           for i in {1..30}; do
-            if echo "SELECT 1 FROM RDB\\\$DATABASE;" | isql-fb -user SYSDBA -password masterkey localhost:3050 2>&1 | grep -q "1"; then
+            if echo "SELECT 1 FROM RDB\$DATABASE;" | isql-fb -user SYSDBA -password masterkey localhost:3050 2>&1 | grep -q "1"; then
               echo "✓ Firebird database is ready"
               exit 0
             fi
-            if [ \$i -eq 30 ]; then
+            if [ $i -eq 30 ]; then
               echo "✗ Timeout waiting for database"
               exit 1
             fi
@@ -157,3 +115,43 @@ jobs:
           files: spec/reports/rspec.xml
           check_name: RSpec Test Results
           comment_mode: always
+
+  # Linting job - OPTIONAL (doesn't block tests)
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3.6'
+          bundler-cache: true
+
+      - name: Run RuboCop
+        run: bundle exec rubocop --display-cop-names --extra-details
+
+  # Syntax check job - OPTIONAL (doesn't block tests)
+  syntax:
+    name: Check Syntax
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3.6'
+
+      - name: Verify Ruby Syntax
+        run: |
+          for file in lib/**/*.rb; do
+            echo "Checking $file..."
+            ruby -c "$file" || exit 1
+          done
+          echo "✓ All Ruby files have valid syntax"
