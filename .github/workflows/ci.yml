@@ -14,13 +14,13 @@ jobs:
       firebird:
         image: firebirdsql/firebird:latest
         env:
-          FIREBIRD_PASSWORD: masterkey
-          ISC_PASSWORD: masterkey
+          FIREBIRD_ROOT_PASSWORD: masterkey
         options: >-
           --health-cmd "isql-fb -user SYSDBA -password masterkey -h localhost"
           --health-interval 30s
           --health-timeout 10s
           --health-retries 10
+          -v fb_data:/var/lib/firebird/data
         ports:
           - 3050:3050
 
