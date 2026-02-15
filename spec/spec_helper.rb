@@ -9,6 +9,10 @@ require "firebird_adapter"
 require "rspec"
 
 DB_PATH = ENV["FIREBIRD_DATABASE"] || File.expand_path("test.fdb", __dir__)
+fb_host = ENV["FIREBIRD_HOST"] || ENV["DB_HOST"] || "localhost"
+fb_port = ENV["FIREBIRD_PORT"] || 3050
+fb_host_with_port = fb_host.include?(":") ? fb_host : "#{fb_host}/#{fb_port}"
+
 DB_CONFIG = {
   adapter: "firebird",
   database: DB_PATH,
@@ -16,17 +20,17 @@ DB_CONFIG = {
   password: ENV["FIREBIRD_PASSWORD"] || "masterkey",
   charset: "UTF8",
   downcase: false,
-  host: ENV["FIREBIRD_HOST"] || ENV["DB_HOST"] || "localhost"
+  host: fb_host_with_port
 }.freeze
-is_local_db = !ENV["FIREBIRD_HOST"] && !DB_PATH.include?(":")
+is_local_db = !ENV["FIREBIRD_HOST"] && !ENV["DB_HOST"] && !DB_PATH.include?(":")
 File.delete(DB_PATH) if is_local_db && File.exist?(DB_PATH)
 
 if is_local_db || !File.exist?(DB_PATH)
   begin
     ::Fb::Database.create(
       database: DB_PATH,
-      user: "SYSDBA",
-      password: "masterkey"
+      user: ENV["FIREBIRD_USER"] || "SYSDBA",
+      password: ENV["FIREBIRD_PASSWORD"] || "masterkey"
     )
   rescue StandardError => e
     puts "Note: Database may already exist or is remote: #{e.message}"
