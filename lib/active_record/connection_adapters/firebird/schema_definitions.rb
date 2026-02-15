@@ -24,7 +24,7 @@ module ActiveRecord
 
         private
 
-        def create_column_definition(name, type, **options)
+        def create_column_definition(name, type, options = {})
           if type == :computed
             Firebird::ColumnDefinition.new(name, type, **options)
           else
@@ -52,7 +52,7 @@ module ActiveRecord
         def visit_ColumnDefinition(o)
           if o.respond_to?(:computed_by) && o.computed_by
             # COMPUTED BY columns en Firebird
-            +"#{quote_column_name(o.name)} COMPUTED BY (#{o.computed_by})"
+            "#{quote_column_name(o.name)} COMPUTED BY (#{o.computed_by})"
 
           else
             super
@@ -60,7 +60,7 @@ module ActiveRecord
         end
 
         def visit_TableDefinition(o)
-          create_sql = +"CREATE #{o.temporary ? "GLOBAL TEMPORARY " : ""}TABLE "
+          create_sql = "CREATE #{"GLOBAL TEMPORARY " if o.temporary}TABLE "
           create_sql << "#{quote_table_name(o.name)} "
 
           statements = o.columns.map { |c| accept(c) }
@@ -80,7 +80,7 @@ module ActiveRecord
 
           column = options.fetch(:column) { return super }
 
-          if column.virtual?
+          if column.respond_to?(:virtual?) && column.virtual?
             # Las columnas COMPUTED BY no llevan más opciones
             return sql
           end
@@ -101,13 +101,13 @@ module ActiveRecord
         end
 
         def visit_AddColumnDefinition(o)
-          sql = +"ADD #{accept(o.column)}"
+          sql = "ADD #{accept(o.column)}"
           add_column_options!(sql, column_options(o.column))
         end
 
         def visit_ChangeColumnDefinition(o)
           column = o.column
-          +"ALTER COLUMN #{quote_column_name(column.name)} TYPE #{type_to_sql(column.type, **column.options)}"
+          "ALTER COLUMN #{quote_column_name(column.name)} TYPE #{type_to_sql(column.type, **column.options)}"
         end
 
         def action_sql(_action, dependency)
@@ -136,7 +136,7 @@ module ActiveRecord
 
       class ModifyColumnDefinition < Struct.new(:name, :type, :options)
         def column
-          @column ||= ColumnDefinition.new(name, type, **options)
+          @column ||= Firebird::ColumnDefinition.new(name, type, **options)
         end
       end
     end

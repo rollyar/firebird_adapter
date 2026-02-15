@@ -10,14 +10,27 @@ module ActiveRecord
 
         def quote_column_name(name)
           name = name.to_s
-          # For now, always return uppercase for Firebird compatibility
-          name.upcase
+
+          # If already quoted, return as-is
+          return name if name.start_with?('"') && name.end_with?('"')
+
+          # Quote if contains spaces or special characters, or has mixed case
+          if name.match?(/[^a-zA-Z0-9_]/) || (name.match?(/[a-z]/) && name.match?(/[A-Z]/))
+            "\"#{name}\""
+          else
+            # For Firebird, convert to UPPER_CASE for SQL
+            name.upcase
+          end
         end
 
         def quote_table_name(name)
           name = name.to_s
-          # For now, always return uppercase for Firebird compatibility
-          name.upcase
+
+          # If already quoted, return as-is
+          return name if name.start_with?('"') && name.end_with?('"')
+
+          # Convert to uppercase for Firebird internal storage but quote to preserve
+          "\"#{name.upcase}\""
         end
 
         def quoted_true

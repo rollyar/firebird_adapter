@@ -154,8 +154,8 @@ RSpec.describe "Firebird Connection" do
     end
 
     it "quotes table names correctly" do
-      expect(connection.quote_table_name("users")).to eq('"users"')
-      expect(connection.quote_table_name("USERS")).to eq("USERS")
+      expect(connection.quote_table_name("users")).to eq('"USERS"')
+      expect(connection.quote_table_name("USERS")).to eq('"USERS"')
     end
   end
 
