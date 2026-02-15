@@ -38,9 +38,13 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y firebird-dev libfbclient2 netcat-openbsd
+        
+        # Configurar variables para compilación de gemas nativas
         echo "FIREBIRD_INCLUDE=/usr/include/firebird" >> $GITHUB_ENV
         echo "FIREBIRD_LIB=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-        echo "ISC_PASSWORD=masterkey" >> $GITHUB_ENV
+        echo "LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LIBRARY_PATH" >> $GITHUB_ENV
+        echo "CPPFLAGS=-I/usr/include/firebird" >> $GITHUB_ENV
+        echo "LDFLAGS=-L/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
 
     - name: Verify Firebird Client Installation
       run: |
@@ -54,7 +58,11 @@ jobs:
         find /usr -name "ibase.h" 2>/dev/null | head -3
 
     - name: Install Dependencies
-      run: bundle install
+      run: |
+        rm -rf vendor/bundle
+        bundle config set --local path 'vendor/bundle'
+        bundle config set --local build.fb "--with-firebird-include=/usr/include/firebird --with-firebird-lib=/usr/lib/x86_64-linux-gnu"
+        bundle install --retry=3
 
     - name: Verify FB Gem Installation
       run: |
