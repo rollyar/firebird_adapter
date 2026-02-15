@@ -12,11 +12,11 @@ DB_PATH = ENV["FIREBIRD_DATABASE"] || File.expand_path("test.fdb", __dir__)
 DB_CONFIG = {
   adapter: "firebird",
   database: DB_PATH,
-  username: "sysdba",
-  password: "masterkey",
+  username: ENV["FIREBIRD_USER"] || "sysdba",
+  password: ENV["FIREBIRD_PASSWORD"] || "masterkey",
   charset: "UTF8",
   downcase: false,
-  host: ENV["DB_HOST"] || "localhost"
+  host: ENV["FIREBIRD_HOST"] || ENV["DB_HOST"] || "localhost"
 }.freeze
 is_local_db = !ENV["FIREBIRD_HOST"] && !DB_PATH.include?(":")
 File.delete(DB_PATH) if is_local_db && File.exist?(DB_PATH)
