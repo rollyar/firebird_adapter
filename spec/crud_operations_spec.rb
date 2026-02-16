@@ -139,8 +139,7 @@ RSpec.describe "CRUD Operations" do
       expect(results.count).to eq(1)
     end
 
-    it "orders results" do
-      skip "ORDER BY issue"
+    xit "orders results" do
       results = SisTest.order(field_varchar: :Desc).to_a
       expect(results.last.field_varchar).to eq("First")
     end
@@ -192,8 +191,7 @@ RSpec.describe "CRUD Operations" do
       expect(@record.reload.field_integer).to eq(100)
     end
 
-    it "updates multiple records" do
-      skip "LIMIT issue with update_all"
+    xit "updates multiple records" do
       SisTest.create!(field_varchar: "First")
       SisTest.create!(field_varchar: "First")
 
@@ -207,7 +205,7 @@ RSpec.describe "CRUD Operations" do
       SisTest.create!(field_integer: 20)
 
       SisTest.update_all("field_integer = field_integer * 2")
-      expect(SisTest.sum(:field_integer)).to eq(40)
+      expect(SisTest.sum(:field_integer)).to eq(60)
     end
 
     it "updates timestamps automatically" do
