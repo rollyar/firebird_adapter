@@ -16,15 +16,18 @@ jobs:
       firebird:
         image: firebirdsql/firebird:latest
         env:
-          ISC_PASSWORD: masterkey
-          FIREBIRD_PASSWORD: masterkey
+          FIREBIRD_ROOT_PASSWORD: masterkey
+          FIREBIRD_DATABASE: test.fdb
+          FIREBIRD_DATABASE_DEFAULT_CHARSET: UTF8
         options: >-
-          --health-cmd "bash -c 'echo \"SELECT 1 FROM RDB\\\$DATABASE;\" | isql-fb -user SYSDBA -password masterkey localhost 2>&1 | grep -q \"1\"' || exit 1"
+          --health-cmd "bash -c 'echo \"SELECT 1 FROM RDB\\\$DATABASE;\" | isql -u SYSDBA -p masterkey SERVER:/var/lib/firebird/data/test.fdb 2>&1 | grep -q \"1\"' || exit 1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 15
         ports:
           - 3050:3050
+        volumes:
+          - firebird_data:/var/lib/firebird/data
 
     steps:
       - uses: actions/checkout@v4
@@ -54,10 +57,10 @@ jobs:
             sleep 1
           done
           
-          echo "Testing Firebird connection..."
+          echo "Testing Firebird connection with SYSDBA..."
           for i in {1..30}; do
             echo "Attempt $i/30: Trying to connect..."
-            if echo "SELECT 1 FROM RDB\$DATABASE;" | isql-fb -user SYSDBA -password masterkey localhost 2>&1 | grep -q "1"; then
+            if echo "SELECT 1 FROM RDB\$DATABASE;" | isql -u SYSDBA -p masterkey SERVER:localhost:/var/lib/firebird/data/test.fdb 2>&1 | grep -q "1"; then
               echo "✓ Firebird is ready and responding"
               exit 0
             fi
@@ -73,6 +76,7 @@ jobs:
           FIREBIRD_PORT: 3050
           FIREBIRD_USER: SYSDBA
           FIREBIRD_PASSWORD: masterkey
-          FIREBIRD_DATABASE: /tmp/test.fdb
+          FIREBIRD_DATABASE: /var/lib/firebird/data/test.fdb
           CI: "true"
         run: bundle exec rspec --format documentation --color
+

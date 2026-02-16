@@ -14,14 +14,11 @@ require "rspec"
 is_ci = ENV["FIREBIRD_HOST"] || ENV["CI"] == "true"
 
 if is_ci
-  # CI/Remote mode: connect to Firebird service
-  # The fb gem expects either:
-  # 1. database: "hostname/port:/path/to/db"
-  # 2. database: "hostname:/path/to/db" (uses default port 3050)
-  # 3. Separate host/port parameters
+  # CI/Remote mode: connect to Firebird service in Docker
+  # The fb gem expects: "SERVER:/path/to/db" for remote connections
   DB_CONFIG = {
     adapter: "firebird",
-    database: "localhost:/tmp/test.fdb",
+    database: "SERVER:localhost:/var/lib/firebird/data/test.fdb",
     username: "SYSDBA",
     password: "masterkey",
     charset: "UTF8"
