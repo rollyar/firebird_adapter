@@ -10,37 +10,48 @@ require "firebird_adapter"
 require "rspec"
 
 # Configure database connection
-DB_PATH = ENV["FIREBIRD_DATABASE"] || File.expand_path("test.fdb", __dir__)
-fb_host = ENV["FIREBIRD_HOST"] || ENV["DB_HOST"] || "localhost"
-fb_port = ENV["FIREBIRD_PORT"] || 3050
-fb_host_with_port = fb_host.include?(":") ? fb_host : "#{fb_host}/#{fb_port}"
+# For CI: use remote Firebird service, for local: use local file
+is_ci = ENV["FIREBIRD_HOST"] || ENV["CI"] == "true"
 
-DB_CONFIG = {
-  adapter: "firebird",
-  database: DB_PATH,
-  username: ENV["FIREBIRD_USER"] || "sysdba",
-  password: ENV["FIREBIRD_PASSWORD"] || "masterkey",
-  charset: "UTF8",
-  downcase: false,
-  host: fb_host_with_port
-}.freeze
+if is_ci
+  # CI/Remote mode: connect to Firebird service
+  # The fb gem expects either:
+  # 1. database: "hostname/port:/path/to/db"
+  # 2. database: "hostname:/path/to/db" (uses default port 3050)
+  # 3. Separate host/port parameters
+  DB_CONFIG = {
+    adapter: "firebird",
+    database: "localhost:/tmp/test.fdb",
+    username: "SYSDBA",
+    password: "masterkey",
+    charset: "UTF8"
+  }.freeze
+else
+  # Local mode: use local database file
+  DB_PATH = ENV["FIREBIRD_DATABASE"] || File.expand_path("test.fdb", __dir__)
+  
+  DB_CONFIG = {
+    adapter: "firebird",
+    database: DB_PATH,
+    username: ENV["FIREBIRD_USER"] || "sysdba",
+    password: ENV["FIREBIRD_PASSWORD"] || "masterkey",
+    charset: "UTF8",
+    downcase: false
+  }.freeze
 
-is_local_db = !ENV["FIREBIRD_HOST"] && !ENV["DB_HOST"] && !DB_PATH.include?(":")
+  # Clean local test database if it exists
+  File.delete(DB_PATH) if File.exist?(DB_PATH)
 
-# Clean local test database if it exists
-File.delete(DB_PATH) if is_local_db && File.exist?(DB_PATH)
-
-# Create database if needed
-if is_local_db || !File.exist?(DB_PATH)
+  # Create database if needed
   begin
     ::Fb::Database.create(
       database: DB_PATH,
-      user: ENV["FIREBIRD_USER"] || "SYSDBA",
-      password: ENV["FIREBIRD_PASSWORD"] || "masterkey"
+      user: "SYSDBA",
+      password: "masterkey"
     )
     puts "✓ Test database created at #{DB_PATH}"
   rescue StandardError => e
-    puts "Note: Database may already exist or is remote: #{e.message}"
+    puts "Note: Database may already exist: #{e.message}"
   end
 end
 
@@ -98,8 +109,11 @@ RSpec.configure do |config|
   config.after(:suite) do
     begin
       ActiveRecord::Base.connection_pool.disconnect! if ActiveRecord::Base.connected?
-      is_local = !ENV["FIREBIRD_HOST"] && !DB_PATH.include?(":")
-      File.delete(DB_PATH) if is_local && File.exist?(DB_PATH)
+      # Only clean up local databases
+      unless is_ci
+        db_path = DB_CONFIG[:database]
+        File.delete(db_path) if File.exist?(db_path)
+      end
       puts "✓ Test cleanup completed"
     rescue StandardError
       nil

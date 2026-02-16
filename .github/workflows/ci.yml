@@ -17,8 +17,9 @@ jobs:
         image: firebirdsql/firebird:latest
         env:
           ISC_PASSWORD: masterkey
+          FIREBIRD_PASSWORD: masterkey
         options: >-
-          --health-cmd "bash -c 'echo \"SELECT 1 FROM RDB\\\$DATABASE;\" | isql-fb -user SYSDBA -password masterkey localhost:3050 2>&1 | grep -q \"1\"'"
+          --health-cmd "bash -c 'echo \"SELECT 1 FROM RDB\\\$DATABASE;\" | isql-fb -user SYSDBA -password masterkey localhost 2>&1 | grep -q \"1\"' || exit 1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 15
@@ -43,21 +44,28 @@ jobs:
 
       - name: Wait for Firebird
         run: |
+          echo "Waiting for Firebird to be ready..."
           for i in {1..60}; do
             if nc -z localhost 3050 2>/dev/null; then
-              echo "Port 3050 open"
+              echo "✓ Port 3050 is open"
               break
             fi
+            echo "Attempt $i/60: Port 3050 not ready yet, waiting..."
             sleep 1
           done
           
+          echo "Testing Firebird connection..."
           for i in {1..30}; do
-            if echo "SELECT 1 FROM RDB\$DATABASE;" | isql-fb -user SYSDBA -password masterkey localhost:3050 2>&1 | grep -q "1"; then
-              echo "Firebird ready"
+            echo "Attempt $i/30: Trying to connect..."
+            if echo "SELECT 1 FROM RDB\$DATABASE;" | isql-fb -user SYSDBA -password masterkey localhost 2>&1 | grep -q "1"; then
+              echo "✓ Firebird is ready and responding"
               exit 0
             fi
             sleep 1
           done
+          
+          echo "❌ Firebird failed to respond after 30 attempts"
+          exit 1
 
       - name: Run Tests
         env:
@@ -66,4 +74,5 @@ jobs:
           FIREBIRD_USER: SYSDBA
           FIREBIRD_PASSWORD: masterkey
           FIREBIRD_DATABASE: /tmp/test.fdb
+          CI: "true"
         run: bundle exec rspec --format documentation --color
