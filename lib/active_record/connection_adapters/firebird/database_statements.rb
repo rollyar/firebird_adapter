@@ -6,35 +6,27 @@ module ActiveRecord
       module DatabaseStatements
         def internal_exec_query(sql, name = "SQL", binds = [], prepare: false, async: false, allow_retry: false)
           log(sql, name, binds, async: async) do
-            # Extract limit/offset values from binds if using parameterized LIMIT
+            # Extract limit/offset values from binds if using parameterized LIMIT/OFFSET
             limit_value = nil
             offset_value = nil
 
             if binds.is_a?(Array) && !binds.empty?
               sql_str = sql.respond_to?(:to_sql) ? sql.to_sql : sql.to_s
-              if sql_str.include?("LIMIT ?")
-                last_bind = binds.last
-                limit_value = if last_bind.respond_to?(:value)
-                                last_bind.value
-                              elsif last_bind.respond_to?(:value_for_database)
-                                last_bind.value_for_database
-                              else
-                                last_bind
-                              end
-                binds = binds.dup
-                binds.pop
-              end
-              if sql_str.include?("OFFSET ?")
-                last_bind = binds.last
-                offset_value = if last_bind.respond_to?(:value)
-                                 last_bind.value
-                               elsif last_bind.respond_to?(:value_for_database)
-                                 last_bind.value_for_database
-                               else
-                                 last_bind
-                               end
-                binds = binds.dup
-                binds.pop
+
+              # Check what bind parameters we have
+              has_limit = sql_str.include?("LIMIT")
+              has_offset = sql_str.include?("OFFSET")
+
+              binds = binds.dup
+
+              if has_limit && has_offset
+                # Both LIMIT and OFFSET - OFFSET is first in binds, then LIMIT
+                offset_value = extract_bind_value(binds.pop) if has_offset
+                limit_value = extract_bind_value(binds.pop) if has_limit
+              elsif has_offset
+                offset_value = extract_bind_value(binds.pop)
+              elsif has_limit
+                limit_value = extract_bind_value(binds.pop)
               end
             end
 
@@ -55,6 +47,18 @@ module ActiveRecord
           end
         rescue ::Fb::Error => e
           raise translate_exception(e, message: "#{e.class.name}: #{e.message}", sql: sql, binds: binds)
+        end
+
+        def extract_bind_value(bind)
+          return nil unless bind
+
+          if bind.respond_to?(:value)
+            bind.value
+          elsif bind.respond_to?(:value_for_database)
+            bind.value_for_database
+          else
+            bind
+          end
         end
 
         def select_all(arel, _name = nil, binds = [], preparable: nil, async: false, allow_retry: false)
@@ -397,8 +401,6 @@ module ActiveRecord
 
         # ---------- PRIVATE ----------
 
-        private
-
         def build_result(result)
           if result.respond_to?(:fields) && result.respond_to?(:fetch)
             columns = result.fields.map(&:downcase)
@@ -587,55 +589,59 @@ module ActiveRecord
 
         def convert_limit_to_first_skip(sql, limit_value = nil, offset_value = nil)
           sql_str = sql.respond_to?(:to_sql) ? sql.to_sql : sql.to_s
-          puts "DEBUG convert_limit_to_first_skip INPUT: #{sql_str}" if ENV["DEBUG_SQL"]
           return sql_str unless sql_str.match?(/LIMIT|OFFSET/i)
-
-          limit_pattern = /\bLIMIT\s+(\?|\d+)(?:\s+OFFSET\s+(\?|\d+))?/i
-          offset_pattern = /\bOFFSET\s+(\?|\d+)/i
 
           new_sql = sql_str.dup
 
-          # Handle LIMIT [n] OFFSET [m] or LIMIT [n]
-          puts "DEBUG: Checking LIMIT pattern against: #{sql_str.inspect}" if ENV["DEBUG_SQL"]
-          puts "DEBUG: limit_pattern = #{limit_pattern.inspect}" if ENV["DEBUG_SQL"]
-          if ENV["DEBUG_SQL"]
-            puts "DEBUG: sql_str valid regex? = #{Regexp.new(limit_pattern.source).match(sql_str).inspect}"
-          end
-          puts "DEBUG: match result = #{sql_str.match(limit_pattern).inspect}" if ENV["DEBUG_SQL"]
-          if match = sql_str.match(limit_pattern)
-            puts "DEBUG: LIMIT matched! match=#{match.inspect}" if ENV["DEBUG_SQL"]
+          # Handle both LIMIT and OFFSET together in one pass
+          limit_pattern = /\bLIMIT\s+(\?|\d+)(?:\s+OFFSET\s+(\?|\d+))?/i
+          offset_pattern = /\bOFFSET\s+(\?|\d+)/i
+
+          has_limit = sql_str.match?(/\bLIMIT\b/i)
+          has_offset = sql_str.match?(/\bOFFSET\b/i)
+
+          if has_limit && match = sql_str.match(limit_pattern)
             limit = match[1]
-            offset = match[2] || 0
+            offset = match[2]
 
-            # If limit is a placeholder (?), replace with actual value
-            limit = limit_value.to_i if limit == "?" && limit_value
-            offset = offset_value.to_i if offset == "?" && offset_value
+            # If placeholders, replace with actual values from binds
+            if limit == "?" && limit_value
+              limit = limit_value.respond_to?(:value) ? limit_value.value : limit_value
+              limit = limit.to_i if limit.respond_to?(:to_i)
+            end
+            if offset == "?" && offset_value
+              offset = offset_value.respond_to?(:value) ? offset_value.value : offset_value
+              offset = offset.to_i if offset.respond_to?(:to_i)
+            end
 
-            # Remove the LIMIT/OFFSET clause
+            offset ||= 0
+
+            # Remove both LIMIT and OFFSET clauses
             new_sql.gsub!(limit_pattern, "")
+            new_sql.gsub!(offset_pattern, "") if has_offset && !match[2]
 
-            # Add FIRST/SKIP at the beginning of SELECT - need to insert before columns, not after SELECT
-            puts "DEBUG: Before gsub, new_sql = #{new_sql.inspect}" if ENV["DEBUG_SQL"]
+            # Add FIRST/SKIP at the beginning of SELECT
             if offset.to_i > 0
               new_sql.sub!(/\bSELECT\b/i) { "SELECT FIRST #{limit} SKIP #{offset}" }
             else
               new_sql.sub!(/\bSELECT\b/i) { "SELECT FIRST #{limit}" }
             end
-            puts "DEBUG: After gsub, new_sql = #{new_sql.inspect}" if ENV["DEBUG_SQL"]
-          end
-
-          # Handle standalone OFFSET
-          if match = sql_str.match(offset_pattern)
+          elsif has_offset && match = sql_str.match(offset_pattern)
             offset = match[1]
 
-            # If offset is a placeholder (?), replace with actual value
-            offset = offset_value.to_i if offset == "?" && offset_value
+            # If placeholder, replace with actual value
+            if offset == "?" && offset_value
+              offset = offset_value.respond_to?(:value) ? offset_value.value : offset_value
+              offset = offset.to_i if offset.respond_to?(:to_i)
+            end
 
-            # Remove the OFFSET clause
+            # Remove OFFSET clause
             new_sql.gsub!(offset_pattern, "")
+
+            # Add SKIP at the beginning of SELECT
             new_sql.sub!(/\bSELECT\b/i) { "SELECT SKIP #{offset}" }
           end
-          puts "DEBUG convert_limit_to_first_skip OUTPUT: #{new_sql}" if ENV["DEBUG_SQL"]
+
           new_sql
         end
 

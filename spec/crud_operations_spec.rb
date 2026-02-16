@@ -161,8 +161,14 @@ RSpec.describe "CRUD Operations" do
       expect(results.length).to eq(2)
     end
 
-    xit "limit, #offset" do
-      results = SisTest.limit(1).offset(1).to_a
+    it "limit, #offset" do
+      SisTest.delete_all
+      SisTest.create!([
+                        { field_varchar: "First", field_integer: 1 },
+                        { field_varchar: "Second", field_integer: 2 },
+                        { field_varchar: "Third", field_integer: 3 }
+                      ])
+      results = SisTest.order(:field_integer).limit(1).offset(1).to_a
       expect(results.length).to eq(1)
       expect(results.first.field_varchar).to eq("Second")
     end
