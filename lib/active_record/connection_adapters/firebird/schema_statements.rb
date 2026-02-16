@@ -155,8 +155,17 @@ module ActiveRecord
                        when 8
                          "INTEGER"
                        when 16
-                         # Check if this is an IDENTITY column
-                         if field_sub_type == 1 # COMPUTED BY column
+                         # Check if this is NUMERIC/DECIMAL (field_sub_type == 2)
+                         if field_sub_type == 2
+                           # field_scale is negative for NUMERIC/DECIMAL (scale = absolute value)
+                           scale = field_scale ? field_scale.abs : 0
+                           precision = field_length || 18
+                           if scale > 0
+                             "NUMERIC(#{precision},#{scale})"
+                           else
+                             "NUMERIC(#{precision})"
+                           end
+                         elsif field_sub_type == 1 # COMPUTED BY column
                            # Check computed source for IDENTITY
                            computed_source_value = scalar_value(row[10]) # RDB$COMPUTED_SOURCE
                            if computed_source_value&.include?("IDENTITY")

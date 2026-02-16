@@ -11,13 +11,13 @@ Se ha mejorado significativamente el sistema de CI/CD del adapter de Firebird pa
      - **Lint**: Ejecuta RuboCop automáticamente
      - **Syntax**: Verifica sintaxis de todos los archivos Ruby
      - **Test**: Ejecuta suite completa de RSpec
-   
+
    - ✅ Configuración mejorada:
      - Variables de entorno centralizadas (Ruby 3.3.6, Firebird latest)
      - Cache de dependencias con `bundler-cache`
      - Mejor manejo de timeouts y retries
      - Espera optimizada para disponibilidad de Firebird
-   
+
    - ✅ Mejor reporting:
      - Formato de salida documentation + XML para CI
      - Upload automático de resultados como artifacts

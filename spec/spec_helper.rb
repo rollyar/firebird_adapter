@@ -14,17 +14,17 @@ require "rspec"
 is_ci = ENV["FIREBIRD_HOST"] || ENV["CI"] == "true"
 
 # Define DB_PATH globally so it's available in all specs
-if is_ci
-  DB_PATH = "/tmp/test.fdb"
-else
-  DB_PATH = ENV["FIREBIRD_DATABASE"] || File.expand_path("test.fdb", __dir__)
-end
+DB_PATH = if is_ci
+            "/tmp/test.fdb"
+          else
+            ENV["FIREBIRD_DATABASE"] || File.expand_path("test.fdb", __dir__)
+          end
 
 if is_ci
   # CI/Remote mode: connect to Firebird service in Docker
   # The fb gem connects to the running Firebird server on localhost:3050
   # We need to create the database first if it doesn't exist
-  
+
   # Create database on remote Firebird server
   begin
     ::Fb::Database.create(
@@ -36,7 +36,7 @@ if is_ci
   rescue StandardError => e
     puts "Note: Database may already exist: #{e.message}"
   end
-  
+
   DB_CONFIG = {
     adapter: "firebird",
     database: "localhost:#{DB_PATH}",
@@ -123,25 +123,21 @@ RSpec.configure do |config|
   end
 
   config.after(:suite) do
-    begin
-      ActiveRecord::Base.connection_pool.disconnect! if ActiveRecord::Base.connected?
-      # Only clean up local databases
-      unless is_ci
-        db_path = DB_CONFIG[:database]
-        File.delete(db_path) if File.exist?(db_path)
-      end
-      puts "✓ Test cleanup completed"
-    rescue StandardError
-      nil
+    ActiveRecord::Base.connection_pool.disconnect! if ActiveRecord::Base.connected?
+    # Only clean up local databases
+    unless is_ci
+      db_path = DB_CONFIG[:database]
+      File.delete(db_path) if File.exist?(db_path)
     end
+    puts "✓ Test cleanup completed"
+  rescue StandardError
+    nil
   end
 
   config.before(:each) do
     # Ensure connection is active before each test
     begin
-      unless ActiveRecord::Base.connection.active?
-        ActiveRecord::Base.establish_connection(DB_CONFIG)
-      end
+      ActiveRecord::Base.establish_connection(DB_CONFIG) unless ActiveRecord::Base.connection.active?
     rescue StandardError
       ActiveRecord::Base.establish_connection(DB_CONFIG)
     end

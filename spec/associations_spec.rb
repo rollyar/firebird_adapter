@@ -30,7 +30,7 @@ RSpec.describe "Associations" do
       # Define models
       Object.send(:remove_const, :Author) if defined?(Author)
       Object.send(:remove_const, :Book) if defined?(Book)
-      
+
       class Author < ActiveRecord::Base
         has_many :books
       end
@@ -83,7 +83,7 @@ RSpec.describe "Associations" do
 
       Object.send(:remove_const, :User) if defined?(User)
       Object.send(:remove_const, :Post) if defined?(Post)
-      
+
       class User < ActiveRecord::Base
         has_many :posts
       end

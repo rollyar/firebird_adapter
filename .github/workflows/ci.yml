@@ -52,7 +52,7 @@ jobs:
             echo "Attempt $i/60: Port 3050 not ready yet, waiting..."
             sleep 1
           done
-          
+
           echo "Testing Firebird connection with SYSDBA..."
           for i in {1..30}; do
             echo "Attempt $i/30: Trying to connect..."
@@ -62,7 +62,7 @@ jobs:
             fi
             sleep 1
           done
-          
+
           echo "❌ Firebird failed to respond after 30 attempts"
           exit 1
 

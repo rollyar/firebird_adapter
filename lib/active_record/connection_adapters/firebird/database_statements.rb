@@ -47,8 +47,10 @@ module ActiveRecord
               result = raw_query(sql, *type_casted_binds(binds))
               build_result(result)
             else
-              raw_execute(sql, *type_casted_binds(binds))
-              ActiveRecord::Result.new([], [])
+              affected_rows = raw_execute(sql, *type_casted_binds(binds))
+              result = ActiveRecord::Result.new([], [])
+              result.define_singleton_method(:rows_affected) { affected_rows || 0 }
+              result
             end
           end
         rescue ::Fb::Error => e
@@ -195,9 +197,8 @@ module ActiveRecord
         end
 
         def exec_delete(sql, name = nil, binds = [])
-          internal_exec_query(sql, name, binds)
-          # Firebird doesn't have a global ROW_COUNT - return affected rows differently
-          0
+          result = internal_exec_query(sql, name, binds)
+          result.rows_affected || 0
         end
 
         alias exec_update exec_delete

@@ -12,76 +12,76 @@ module Arel
     private
 
     def visit_Arel_Nodes_SelectCore(o, collector, select_statement)
-      collector << 'SELECT'
+      collector << "SELECT"
 
       visit_Arel_Nodes_SelectOptions(select_statement, collector)
 
       collector = collect_optimizer_hints(o, collector)
       collector = maybe_visit o.set_quantifier, collector
 
-      collect_nodes_for o.projections, collector, ' '
+      collect_nodes_for o.projections, collector, " "
 
       if o.source && !o.source.empty?
-        collector << ' FROM '
+        collector << " FROM "
         collector = visit o.source, collector
       end
 
-      collect_nodes_for o.wheres, collector, ' WHERE ', ' AND '
-      collect_nodes_for o.groups, collector, ' GROUP BY '
+      collect_nodes_for o.wheres, collector, " WHERE ", " AND "
+      collect_nodes_for o.groups, collector, " GROUP BY "
       unless o.havings.empty?
-        collector << ' HAVING '
-        inject_join o.havings, collector, ' AND '
+        collector << " HAVING "
+        inject_join o.havings, collector, " AND "
       end
-      collect_nodes_for o.windows, collector, ' WINDOW '
+      collect_nodes_for o.windows, collector, " WINDOW "
 
       collector
     end
 
-    def visit_Arel_Nodes_SelectStatement o, collector
+    def visit_Arel_Nodes_SelectStatement(o, collector)
       if o.with
         collector = visit o.with, collector
-        collector << ' '
+        collector << " "
       end
 
-      collector = o.cores.inject(collector) { |c,x|
+      collector = o.cores.inject(collector) do |c, x|
         visit_Arel_Nodes_SelectCore(x, c, o)
-      }
+      end
 
       unless o.orders.empty?
-        collector << ' ORDER BY '
+        collector << " ORDER BY "
         len = o.orders.length - 1
-        o.orders.each_with_index { |x, i|
+        o.orders.each_with_index do |x, i|
           collector = visit(x, collector)
-          collector << ', ' unless len == i
-        }
+          collector << ", " unless len == i
+        end
       end
 
       collector
     end
 
     def visit_Arel_Nodes_Limit(o, collector)
-      collector << 'FIRST '
+      collector << "FIRST "
       visit o.expr, collector
     end
 
     def visit_Arel_Nodes_Offset(o, collector)
-      collector << 'SKIP '
+      collector << "SKIP "
       visit o.expr, collector
     end
 
-    def visit_Arel_SelectManager o, collector
+    def visit_Arel_SelectManager(o, collector)
       return visit(o.ast, collector) if o.parentheses_ignored
 
-      collector << '('
-      visit(o.ast, collector) << ')'
+      collector << "("
+      visit(o.ast, collector) << ")"
     end
 
-    def visit_Arel_Nodes_Union o, collector
-      infix_value(o, collector, ' UNION ')
+    def visit_Arel_Nodes_Union(o, collector)
+      infix_value(o, collector, " UNION ")
     end
 
-    def visit_Arel_Nodes_UnionAll o, collector
-      infix_value(o, collector, ' UNION ALL ')
+    def visit_Arel_Nodes_UnionAll(o, collector)
+      infix_value(o, collector, " UNION ALL ")
     end
   end
 end

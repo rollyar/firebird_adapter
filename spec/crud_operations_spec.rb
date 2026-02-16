@@ -95,7 +95,7 @@ RSpec.describe "CRUD Operations" do
         expect(record.field_boolean).to be false
       end
 
-      xit "handles decimals" do
+      it "handles decimals" do
         record = SisTest.create!(field_decimal: BigDecimal("123.45"))
         expect(record.field_decimal).to eq(BigDecimal("123.45"))
       end
@@ -139,9 +139,16 @@ RSpec.describe "CRUD Operations" do
       expect(results.count).to eq(1)
     end
 
-    xit "orders results" do
-      results = SisTest.order(field_varchar: :Desc).to_a
-      expect(results.last.field_varchar).to eq("First")
+    it "orders results" do
+      SisTest.delete_all
+      SisTest.create!([
+                        { field_varchar: "First", field_integer: 1 },
+                        { field_varchar: "Second", field_integer: 2 },
+                        { field_varchar: "Third", field_integer: 3 }
+                      ])
+      results = SisTest.order(field_integer: :desc).to_a
+      expect(results.first.field_integer).to eq(3)
+      expect(results.last.field_integer).to eq(1)
     end
 
     it "limits results" do
@@ -191,7 +198,7 @@ RSpec.describe "CRUD Operations" do
       expect(@record.reload.field_integer).to eq(100)
     end
 
-    xit "updates multiple records" do
+    it "updates multiple records" do
       SisTest.create!(field_varchar: "First")
       SisTest.create!(field_varchar: "First")
 
