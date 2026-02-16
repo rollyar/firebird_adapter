@@ -1,27 +1,8 @@
 require "spec_helper"
 
 describe 'exception' do
-
-  before(:all) do
-    @initial_encoding ||= ActiveRecord::Base.connection_db_config.configuration_hash[:encoding] || ActiveRecord::ConnectionAdapters::FirebirdAdapter::DEFAULT_ENCODING
-    ActiveRecord::Base.establish_connection(
-      adapter:  'firebird',
-      database: DB_PATH,
-      username: 'sysdba',
-      password: 'masterkey',
-      encoding: 'UTF8'
-    )
-  end
-
-  after(:all) do
-    ActiveRecord::Base.establish_connection(
-      adapter:  'firebird',
-      database: DB_PATH,
-      username: 'sysdba',
-      password: 'masterkey',
-      encoding: @initial_encoding
-    )
-  end
+  # Connection is already established in spec_helper.rb before(:suite)
+  # No need to re-establish it here - this was causing transaction conflicts
 
   it 'execute block with exception' do
     expect do

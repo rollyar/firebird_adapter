@@ -13,35 +13,39 @@ require "rspec"
 # For CI: use remote Firebird service, for local: use local file
 is_ci = ENV["FIREBIRD_HOST"] || ENV["CI"] == "true"
 
+# Define DB_PATH globally so it's available in all specs
+if is_ci
+  DB_PATH = "/tmp/test.fdb"
+else
+  DB_PATH = ENV["FIREBIRD_DATABASE"] || File.expand_path("test.fdb", __dir__)
+end
+
 if is_ci
   # CI/Remote mode: connect to Firebird service in Docker
   # The fb gem connects to the running Firebird server on localhost:3050
   # We need to create the database first if it doesn't exist
-  DB_PATH_REMOTE = "/tmp/test.fdb"
   
   # Create database on remote Firebird server
   begin
     ::Fb::Database.create(
-      database: "localhost:#{DB_PATH_REMOTE}",
+      database: "localhost:#{DB_PATH}",
       user: "SYSDBA",
       password: "masterkey"
     )
-    puts "✓ Remote test database created at #{DB_PATH_REMOTE}"
+    puts "✓ Remote test database created at #{DB_PATH}"
   rescue StandardError => e
     puts "Note: Database may already exist: #{e.message}"
   end
   
   DB_CONFIG = {
     adapter: "firebird",
-    database: "localhost:#{DB_PATH_REMOTE}",
+    database: "localhost:#{DB_PATH}",
     username: "SYSDBA",
     password: "masterkey",
     charset: "UTF8"
   }.freeze
 else
   # Local mode: use local database file
-  DB_PATH = ENV["FIREBIRD_DATABASE"] || File.expand_path("test.fdb", __dir__)
-  
   DB_CONFIG = {
     adapter: "firebird",
     database: DB_PATH,
@@ -140,6 +144,14 @@ RSpec.configure do |config|
       end
     rescue StandardError
       ActiveRecord::Base.establish_connection(DB_CONFIG)
+    end
+
+    # Rollback any pending transactions
+    connection = ActiveRecord::Base.connection
+    begin
+      connection.rollback_db_transaction if connection.transaction_open?
+    rescue StandardError
+      nil
     end
 
     # Clean table data using Rails delete_all
