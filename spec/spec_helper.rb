@@ -15,10 +15,25 @@ is_ci = ENV["FIREBIRD_HOST"] || ENV["CI"] == "true"
 
 if is_ci
   # CI/Remote mode: connect to Firebird service in Docker
-  # The fb gem expects: "SERVER:/path/to/db" for remote connections
+  # The fb gem connects to the running Firebird server on localhost:3050
+  # We need to create the database first if it doesn't exist
+  DB_PATH_REMOTE = "/tmp/test.fdb"
+  
+  # Create database on remote Firebird server
+  begin
+    ::Fb::Database.create(
+      database: "localhost:#{DB_PATH_REMOTE}",
+      user: "SYSDBA",
+      password: "masterkey"
+    )
+    puts "✓ Remote test database created at #{DB_PATH_REMOTE}"
+  rescue StandardError => e
+    puts "Note: Database may already exist: #{e.message}"
+  end
+  
   DB_CONFIG = {
     adapter: "firebird",
-    database: "SERVER:localhost:/var/lib/firebird/data/test.fdb",
+    database: "localhost:#{DB_PATH_REMOTE}",
     username: "SYSDBA",
     password: "masterkey",
     charset: "UTF8"
