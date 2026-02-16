@@ -6,6 +6,7 @@ on:
   pull_request:
     branches: [ master, main, rails-7-2 ]
 
+# Simple CI workflow - only runs RSpec tests
 jobs:
   test:
     name: RSpec Tests
@@ -25,82 +26,44 @@ jobs:
           - 3050:3050
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install Firebird Client Libraries
         run: |
           sudo apt-get update
           sudo apt-get install -y firebird-dev libfbclient2 netcat-openbsd
-
-          # Crear symlink para headers si es necesario
           if [ -d /usr/include/firebird ] && [ ! -f /usr/include/ibase.h ]; then
             sudo ln -sf /usr/include/firebird/ibase.h /usr/include/ibase.h
           fi
 
-      - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3.6'
           bundler-cache: true
 
-      - name: Verify FB Gem Installation
+      - name: Wait for Firebird
         run: |
-          bundle exec ruby -e "
-            require 'fb'
-            puts '✓ FB gem loaded successfully'
-          " || exit 1
-
-      - name: Wait for Firebird Service
-        run: |
-          export PATH=$PATH:/usr/lib/x86_64-linux-gnu/firebird/5.0/bin:/opt/firebird/bin
-          
-          echo "Waiting for Firebird service on port 3050..."
           for i in {1..60}; do
             if nc -z localhost 3050 2>/dev/null; then
-              echo "✓ Port 3050 is open"
+              echo "Port 3050 open"
               break
             fi
-            if [ $i -eq 60 ]; then
-              echo "✗ Timeout waiting for port 3050"
-              exit 1
-            fi
             sleep 1
           done
-
-          echo "Testing database connectivity..."
+          
           for i in {1..30}; do
             if echo "SELECT 1 FROM RDB\$DATABASE;" | isql-fb -user SYSDBA -password masterkey localhost:3050 2>&1 | grep -q "1"; then
-              echo "✓ Firebird database is ready"
+              echo "Firebird ready"
               exit 0
-            fi
-            if [ $i -eq 30 ]; then
-              echo "✗ Timeout waiting for database"
-              exit 1
             fi
             sleep 1
           done
 
-      - name: Create Test Reports Directory
-        run: mkdir -p spec/reports
-
-      - name: Run RSpec Tests
+      - name: Run Tests
         env:
           FIREBIRD_HOST: localhost
           FIREBIRD_PORT: 3050
           FIREBIRD_USER: SYSDBA
           FIREBIRD_PASSWORD: masterkey
           FIREBIRD_DATABASE: /tmp/test.fdb
-        run: |
-          bundle exec rspec \
-            --format documentation \
-            --color \
-            --require spec_helper
-
-      - name: Upload Test Results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: spec/reports
-          retention-days: 30
+        run: bundle exec rspec --format documentation --color
