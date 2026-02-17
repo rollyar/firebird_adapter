@@ -42,7 +42,7 @@ RSpec.describe "query" do
     expect(SisTest.offset(3).count).to eq(2)
   end
 
-  xit "#limit, #offset" do
+  it "#limit, #offset" do
     expect(SisTest.limit(1).offset(2).first.field_integer).to eq(3)
   end
 
