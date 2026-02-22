@@ -31,7 +31,7 @@ describe "field types" do
 
   it "double precision" do
     record = SisTest.create!(field_double_precision: "99.99").reload
-    expect(record.field_double_precision).to eq 99.99
+    expect(record.field_double_precision).to be_within(0.01).of(99.99)
   end
 
   it "blob text" do

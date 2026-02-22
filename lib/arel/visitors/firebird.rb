@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Arel
   class SelectManager
     attr_reader :parentheses_ignored
@@ -12,14 +14,14 @@ module Arel
     private
 
     def visit_Arel_Nodes_SelectCore(o, collector, select_statement)
-      collector << "SELECT"
+      collector << "SELECT "
 
       visit_Arel_Nodes_SelectOptions(select_statement, collector)
 
       collector = collect_optimizer_hints(o, collector)
       collector = maybe_visit o.set_quantifier, collector
 
-      collect_nodes_for o.projections, collector, " "
+      collect_nodes_for o.projections, collector, "  "
 
       if o.source && !o.source.empty?
         collector << " FROM "
@@ -72,8 +74,8 @@ module Arel
     def visit_Arel_SelectManager(o, collector)
       return visit(o.ast, collector) if o.parentheses_ignored
 
-      collector << "("
-      visit(o.ast, collector) << ")"
+      collector << "( "
+      visit(o.ast, collector) << ") "
     end
 
     def visit_Arel_Nodes_Union(o, collector)

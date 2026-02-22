@@ -37,7 +37,7 @@ module ActiveRecord
 
         def dup
           self.class.new(
-            sql_type: super(),
+            sql_type: sql_type,
             limit: limit,
             precision: precision,
             scale: scale,

@@ -3,8 +3,7 @@
 module ActiveRecord
   module ConnectionHandling
     def firebird_connection(config)
-      require "active_record/connection_adapters/firebird/adapter"
-
+      require "active_record/connection_adapters/firebird_adapter"
       ConnectionAdapters::FirebirdAdapter.new(config)
     end
   end

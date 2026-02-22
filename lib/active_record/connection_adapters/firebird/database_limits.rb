@@ -1,7 +1,7 @@
 # frozen_string_literal: true
+
 module ActiveRecord::ConnectionAdapters::Firebird
   module DatabaseLimits
-
     def table_alias_length
       31
     end
@@ -29,6 +29,5 @@ module ActiveRecord::ConnectionAdapters::Firebird
     def sql_query_length
       32_767
     end
-
   end
 end

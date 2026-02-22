@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 ActiveRecord::Calculations.module_eval do
   def count(column_name = nil)
     return super() if block_given?
@@ -10,6 +12,6 @@ class ActiveRecord::ConnectionAdapters::AbstractAdapter
     result = from_clause + join_clause + where_clause + having_clause
     result.unshift(offset) if offset
     result.unshift(limit) if limit
-    result  
+    result
   end
 end if ActiveRecord::VERSION::STRING < '5.2.0'

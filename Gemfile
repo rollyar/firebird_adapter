@@ -12,7 +12,8 @@ gem "rspec_junit_formatter", "~> 0.6.0"
 
 gem "rubocop", "~> 1.21"
 
-gem "fb", "~> 0.10.0"
+# gem "fb", "~> 0.10.1"
+gem "fb", git: "https://github.com/rollyar/fb.git"
 
 # Development dependencies from gemspec
 gem "database_cleaner-active_record", ">= 2.1"

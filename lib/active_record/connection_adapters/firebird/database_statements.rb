@@ -38,6 +38,23 @@ module ActiveRecord
             if sql.match?(/\A\s*SELECT\b/i)
               result = raw_query(sql, *type_casted_binds(binds))
               build_result(result)
+            elsif sql.match?(/\bRETURNING\b/i)
+              result = raw_query(sql, *type_casted_binds(binds))
+              if result.is_a?(Hash) && result.key?(:returning)
+                returning_vals = result[:returning]
+                returning_vals = [returning_vals] unless returning_vals.is_a?(Array)
+                returning_cols_match = sql.scan(/RETURNING\s+([^\s;]+)/i).flatten.first
+                returning_cols = if returning_cols_match
+                                   returning_cols_match.split(",").map(&:strip)
+                                 else
+                                   (0...returning_vals.size).map do |i|
+                                     "column#{i}"
+                                   end
+                                 end
+                ActiveRecord::Result.new(returning_cols, [returning_vals])
+              else
+                build_result(result)
+              end
             else
               affected_rows = raw_execute(sql, *type_casted_binds(binds))
               result = ActiveRecord::Result.new([], [])
@@ -197,6 +214,60 @@ module ActiveRecord
             exec_insert_returning(sql, name, binds, returning)
           else
             exec_insert_traditional(sql, name, binds, pk, sequence_name)
+          end
+        end
+
+        def exec_insert_new(_insert, sql, binds, returning, prepare: false, subscriptions: nil, if_modified: nil)
+          sql_str = sql.to_s
+
+          processed_binds = binds.dup
+          bind_values = processed_binds.map { |bind| extract_bind_value(bind) }
+
+          result = raw_execute(sql_str, *bind_values)
+
+          if result.is_a?(Hash) && result.key?(:returning)
+            ActiveRecord::Result.new(
+              returning,
+              [result[:returning]]
+            )
+          else
+            build_result(result)
+          end
+        end
+
+        def exec_update_new(_updates, sql, binds, returning = nil, prepare: false, subscriptions: nil, if_modified: nil)
+          sql_str = sql.to_s
+          processed_binds = binds.dup
+          bind_values = processed_binds.map { |bind| extract_bind_value(bind) }
+
+          result = raw_execute(sql_str, *bind_values)
+
+          if result.is_a?(Hash) && result.key?(:returning)
+            ActiveRecord::Result.new(
+              returning || [],
+              [result[:returning]]
+            )
+          else
+            rows_affected = result.is_a?(Hash) ? result[:rows_affected] : 0
+            ActiveRecord::Result.new([], [[rows_affected]])
+          end
+        end
+
+        def exec_delete_new(_deletes, sql, binds, returning = nil, prepare: false, subscriptions: nil, if_modified: nil)
+          sql_str = sql.to_s
+          processed_binds = binds.dup
+          bind_values = processed_binds.map { |bind| extract_bind_value(bind) }
+
+          result = raw_execute(sql_str, *bind_values)
+
+          if result.is_a?(Hash) && result.key?(:returning)
+            ActiveRecord::Result.new(
+              returning || [],
+              [result[:returning]]
+            )
+          else
+            rows_affected = result.is_a?(Hash) ? result[:rows_affected] : 0
+            ActiveRecord::Result.new([], [[rows_affected]])
           end
         end
 
@@ -445,57 +516,10 @@ module ActiveRecord
         end
 
         def exec_insert_returning(sql, name, binds, _returning)
-          # Remove ID column from INSERT for IDENTITY columns
-          table_match = sql.match(/INSERT INTO\s+(["\w]+)/i)
-          table_match_name = table_match ? table_match[1].delete('"') : "sis_tests"
-          pks = primary_keys(table_match_name)
-          pks.is_a?(Array) ? pks.first : (pks || "id")
+          returning_columns = _returning.map(&:to_s).join(", ")
 
-          # Parse and rebuild INSERT without ID column
-          if sql =~ /\((.*?)\)\s*VALUES\s*\((.*?)\)/i
-            columns_part = ::Regexp.last_match(1)
-            values_part = ::Regexp.last_match(2)
+          sql = "#{sql} RETURNING #{returning_columns}" unless sql.match?(/\bRETURNING\b/i)
 
-            # Find and remove ID column
-            columns_list = columns_part.split(",").map(&:strip)
-            # Remove ID column from INSERT for IDENTITY columns
-            table_match = sql.match(/INSERT INTO\s+["']?([^"'\s]+)/i)
-            table_match_name = table_match ? table_match[1] : "sis_tests"
-            pks = primary_keys(table_match_name)
-            pk = pks.is_a?(Array) ? pks.first : (pks || "id")
-            pk_value = pk.is_a?(Array) ? pk.first : pk
-            pk_value = pk_value.to_s.gsub(/[\["]/, "").strip
-
-            # Parse and rebuild INSERT without ID column
-            if sql =~ /\((.*?)\)\s*VALUES\s*\((.*?)\)/i
-              columns_part = ::Regexp.last_match(1)
-              values_part = ::Regexp.last_match(2)
-
-              # Find and remove ID column
-              columns_list = columns_part.split(",").map(&:strip)
-              id_index = columns_list.find_index do |col|
-                col.strip.upcase == pk_value.upcase || col.strip.upcase == "ID"
-              end
-
-              if id_index
-                # Remove ID column from columns list
-                columns_list.delete_at(id_index)
-
-                # Remove corresponding placeholder from values
-                values_list = values_part.split(",").map(&:strip)
-                values_list.delete_at(id_index)
-
-                # Remove ID from binds
-                binds.delete_at(id_index)
-
-                # Rebuild SQL
-                sql = sql.gsub(/\(.*?\)\s*VALUES\s*\(.*?\)/i,
-                               "(#{columns_list.join(", ")}) VALUES (#{values_list.join(", ")})")
-              end
-            end
-          end
-
-          # For IDENTITY columns, try to get the generated ID
           result = internal_exec_query(sql, name, binds)
 
           # If RETURNING didn't work, try to get the ID from IDENTITY column

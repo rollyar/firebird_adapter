@@ -4,47 +4,55 @@ module ActiveRecord
   module ConnectionAdapters
     module Firebird
       module Quoting
+        # Escape single quotes for Firebird (double single quotes)
         def quote_string(s)
-          s.gsub("'", "''")
+          s.to_s.gsub("'", "''")
         end
 
+        # Quote column names according to Firebird rules
+        # - Simple uppercase names: no quotes (ID, NAME)
+        # - Mixed case or special chars: with quotes ("fieldName", "field name")
         def quote_column_name(name)
           name = name.to_s
 
           # If already quoted, return as-is
           return name if name.start_with?('"') && name.end_with?('"')
 
-          # Quote if contains spaces or special characters, or has mixed case
+          # Quote if contains spaces, special characters, or has mixed case
           if name.match?(/[^a-zA-Z0-9_]/) || (name.match?(/[a-z]/) && name.match?(/[A-Z]/))
             "\"#{name}\""
           else
-            # For Firebird, convert to UPPER_CASE for SQL
+            # For Firebird, convert simple names to UPPER_CASE without quotes
             name.upcase
           end
         end
 
+        # Quote table names - always uppercase with quotes for consistency
         def quote_table_name(name)
           name = name.to_s
 
           # If already quoted, return as-is
           return name if name.start_with?('"') && name.end_with?('"')
 
-          # Convert to uppercase for Firebird internal storage but quote to preserve
+          # Convert to uppercase and quote for Firebird
           "\"#{name.upcase}\""
         end
 
+        # Return TRUE for boolean true (Firebird 3+)
         def quoted_true
           "TRUE"
         end
 
+        # Return FALSE for boolean false (Firebird 3+)
         def quoted_false
           "FALSE"
         end
 
+        # Format dates and timestamps for Firebird
         def quoted_date(value)
           if value.acts_like?(:time)
             if supports_time_zones? && value.respond_to?(:in_time_zone)
-              # Firebird 4+ soporta timestamps con zona horaria
+              # Firebird 4+ supports timestamps with time zone
               value = value.in_time_zone
               zone = value.formatted_offset
               value.strftime("%Y-%m-%d %H:%M:%S.%6N #{zone}")
@@ -58,23 +66,25 @@ module ActiveRecord
           end
         end
 
+        # Quote binary data as hexadecimal for Firebird
         def quoted_binary(value)
-          # Firebird usa hexadecimal para binarios
+          return "NULL" if value.nil?
+
           # Handle both string and binary data properly
-          if value.respond_to?(:force_encoding)
-            # Ensure binary encoding
-            binary_value = value.dup.force_encoding("BINARY")
-            "x'#{binary_value.unpack1("H*")}'"
-          else
-            "x'#{value.unpack1("H*")}'"
-          end
+          binary_value = if value.respond_to?(:force_encoding)
+                           value.dup.force_encoding("BINARY")
+                         else
+                           value.to_s.force_encoding("BINARY")
+                         end
+
+          "x'#{binary_value.unpack1("H*")}'"
         end
 
+        # Type cast values for Firebird
         def type_cast(value)
           case value
           when Type::Binary::Data
-            # Firebird maneja blobs de manera especial
-            # Ensure proper encoding handling
+            # Firebird handles blobs specially
             if value.respond_to?(:force_encoding)
               value.dup.force_encoding("BINARY")
             else
@@ -96,10 +106,39 @@ module ActiveRecord
           end
         end
 
+        # Quote default expressions - don't quote function calls
         def quote_default_expression(value, column)
           if value.is_a?(String) && value.match?(/\A\w+\(.*\)\z/)
-            # Es una función, no quotear
+            # It's a function, don't quote
             value
+          else
+            super
+          end
+        end
+
+        # Quote values for SQL
+        def quote(value)
+          case value
+          when Type::Binary::Data
+            "'#{quote_string(value.hex)}'"
+          when Type::Time::Value
+            "'#{quoted_date(value)}'"
+          when Date, Time
+            "'#{quoted_date(value)}'"
+          when String
+            "'#{quote_string(value)}'"
+          when true
+            quoted_true
+          when false
+            quoted_false
+          when nil
+            "NULL"
+          when BigDecimal
+            value.to_s("F")
+          when Numeric
+            value.to_s
+          when ActiveRecord::Relation
+            quote(value.to_sql)
           else
             super
           end
