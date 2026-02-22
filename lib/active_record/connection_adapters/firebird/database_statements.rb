@@ -644,7 +644,7 @@ module ActiveRecord
             new_sql.gsub!(limit_pattern, "")
             new_sql.gsub!(offset_pattern, "") if has_offset && !match[2]
 
-            # Add FIRST/SKIP at the beginning of SELECT
+            # Add FIRST/SKIP after SELECT keyword
             if offset.to_i > 0
               new_sql.sub!(/\bSELECT\b/i) { "SELECT FIRST #{limit} SKIP #{offset}" }
             else
@@ -662,7 +662,7 @@ module ActiveRecord
             # Remove OFFSET clause
             new_sql.gsub!(offset_pattern, "")
 
-            # Add SKIP at the beginning of SELECT
+            # Add SKIP after SELECT keyword
             new_sql.sub!(/\bSELECT\b/i) { "SELECT SKIP #{offset}" }
           end
 
