@@ -267,7 +267,7 @@ RSpec.describe "CRUD Operations" do
       end
     end
 
-    xdescribe "Window Functions" do
+    describe "Window Functions" do
       before do
         SisTest.create!(field_integer: 10)
         SisTest.create!(field_integer: 20)
