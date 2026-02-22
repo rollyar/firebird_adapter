@@ -9,3 +9,5 @@
 *.gem
 /db/test.fdb
 /vendor/
+.DS_Store
+.vscode/
