@@ -428,48 +428,6 @@ module ActiveRecord
           SQL
         end
 
-        def create_table(table_name, **options)
-          super
-
-          return unless options[:sequence] != false && options[:id] != false
-
-          sequence_name = options[:sequence] || default_sequence_name(table_name)
-          create_sequence(sequence_name)
-        end
-
-        def drop_table(table_name, options = {})
-          if options[:sequence] != false
-            sequence_name = options[:sequence] || default_sequence_name(table_name)
-            drop_sequence(sequence_name) if sequence_exists?(sequence_name)
-          end
-
-          super
-        end
-
-        def create_sequence(sequence_name)
-          execute("CREATE SEQUENCE #{sequence_name}")
-        rescue StandardError
-          nil
-        end
-
-        def drop_sequence(sequence_name)
-          execute("DROP SEQUENCE #{sequence_name}")
-        rescue StandardError
-          nil
-        end
-
-        def sequence_exists?(sequence_name)
-          @connection.generator_names.include?(sequence_name)
-        end
-
-        def default_sequence_name(table_name, _column = nil)
-          "#{table_name}_g01"
-        end
-
-        def next_sequence_value(sequence_name)
-          @connection.query("SELECT NEXT VALUE FOR #{sequence_name} FROM RDB$DATABASE")[0][0]
-        end
-
         # ---------- PRIVATE ----------
 
         def build_result(result)

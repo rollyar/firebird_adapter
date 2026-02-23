@@ -52,7 +52,7 @@ module ActiveRecord
               i.RDB$UNIQUE_FLAG as is_unique,
               TRIM(seg.RDB$FIELD_NAME) as column_name,
               i.RDB$INDEX_TYPE as index_type,
-              #{supports_partial_index? ? "i.RDB$CONDITION " : "NULL "} as condition
+              NULL as condition
             FROM RDB$INDICES i
             JOIN RDB$INDEX_SEGMENTS seg ON i.RDB$INDEX_NAME = seg.RDB$INDEX_NAME
             WHERE UPPER(TRIM(i.RDB$RELATION_NAME)) = UPPER('#{table_name.to_s.upcase}')
@@ -276,15 +276,12 @@ module ActiveRecord
         end
 
         def create_table(table_name, id: :primary_key, primary_key: nil, force: nil, **options)
-          td = build_create_table_definition(table_name, id: id, primary_key: primary_key, force: force, **options)
-          yield td if block_given?
-          drop_table(table_name, if_exists: true) if force
-          execute(schema_creation.accept(td))
+          td = super
 
-          if !supports_identity_columns? && td.columns.any? { |c| c.primary_key? }
-            pk_column = td.columns.find { |c| c.primary_key? }
-            create_sequence_for_pk(table_name, pk_column.name)
-          end
+          return td unless options[:sequence] != false && id != false
+
+          sequence_name = options[:sequence] || default_sequence_name(table_name)
+          create_sequence(sequence_name)
 
           td
         end
@@ -302,9 +299,19 @@ module ActiveRecord
         end
 
         def add_column(table_name, column_name, type, **options)
-          at = create_alter_table(table_name)
-          at.add_column(column_name, type, **options)
-          execute(schema_creation.accept(at))
+          sql_type = type_to_sql(type, **options.slice(:limit, :precision, :scale))
+
+          sql = "ALTER TABLE #{quote_table_name(table_name)} ADD #{quote_column_name(column_name)} #{sql_type}"
+
+          if options[:null] == false
+            sql << " NOT NULL"
+          elsif options[:null] == true
+            sql << " NULL"
+          end
+
+          execute(sql)
+
+          change_column_default(table_name, column_name, options[:default]) if options[:default]
 
           return unless !supports_identity_columns? && (options[:auto_increment] || options[:primary_key])
 
@@ -355,7 +362,7 @@ module ActiveRecord
         end
 
         def remove_column(table_name, column_name, _type = nil, **_options)
-          execute("ALTER TABLE #{quote_table_name(table_name)} DROP COLUMN #{quote_column_name(column_name)}")
+          execute("ALTER TABLE #{quote_table_name(table_name)} DROP #{quote_column_name(column_name)}")
         end
 
         def add_index(table_name, column_name, **options)
@@ -396,12 +403,14 @@ module ActiveRecord
         def create_sequence(sequence_name, start_value: 1)
           execute("CREATE SEQUENCE #{quote_table_name(sequence_name)}")
           execute("ALTER SEQUENCE #{quote_table_name(sequence_name)} RESTART WITH #{start_value}")
+        rescue StandardError
+          nil
         end
 
-        def drop_sequence(sequence_name, if_exists: false)
+        def drop_sequence(sequence_name)
           execute("DROP SEQUENCE #{quote_table_name(sequence_name)}")
-        rescue StatementInvalid
-          raise unless if_exists
+        rescue StandardError
+          nil
         end
 
         def sequence_exists?(sequence_name)
@@ -413,10 +422,12 @@ module ActiveRecord
           SQL
         end
 
-        def next_sequence_value(sequence_name)
-          return unless sequence_exists?(sequence_name)
+        def default_sequence_name(table_name, _column = nil)
+          "#{table_name}_seq"
+        end
 
-          query_value("SELECT NEXT VALUE FOR #{quote_table_name(sequence_name)} FROM RDB$DATABASE")
+        def next_sequence_value(sequence_name)
+          @connection.query("SELECT NEXT VALUE FOR #{quote_table_name(sequence_name)}  FROM RDB$DATABASE")[0][0]
         end
 
         def check_constraints(table_name)

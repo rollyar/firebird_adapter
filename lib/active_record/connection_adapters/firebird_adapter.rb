@@ -249,16 +249,8 @@ module ActiveRecord
           column.respond_to?(:auto_incremented?) && column.auto_incremented?
       end
 
-      def default_sequence_name(table_name, _primary_key)
-        "#{table_name}_seq"
-      end
-
       def prefetch_primary_key?(_table_name = nil)
         false
-      end
-
-      def next_sequence_value(_sequence_name)
-        0
       end
 
       # ========== UTILITY METHODS ==========
@@ -443,15 +435,15 @@ module ActiveRecord
         when /^DEFAULT\s+'(.*)'/m
           value = Regexp.last_match(1).gsub("''", "'")
           case value.upcase
-          when "TRUE" then true
-          when "FALSE" then false
+          when "TRUE" then "true"
+          when "FALSE" then "false"
           else value
           end
         when /^DEFAULT\s+(.*)/m
           value = Regexp.last_match(1)
           case value.upcase
-          when "TRUE" then true
-          when "FALSE" then false
+          when "TRUE" then "true"
+          when "FALSE" then "false"
           else value
           end
         else
