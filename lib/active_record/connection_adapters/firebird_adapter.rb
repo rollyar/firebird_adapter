@@ -21,8 +21,29 @@ module ActiveRecord
       def initialize(config)
         super
         @config = config.symbolize_keys
+        @config[:database] = build_connection_string(@config)
         @connection = nil
         @firebird_version = nil
+      end
+
+      private
+
+      def build_connection_string(config)
+        db = config[:database].to_s
+        host = config[:host].to_s
+
+        return db if host.empty?
+        return db if db.include?(":") || db.start_with?("/")
+
+        "#{host}:#{db}"
+      end
+
+      public
+
+      def connect
+        return @connection if active?
+
+        @connection = ::Fb::Database.connect(@config)
       end
 
       def adapter_name
@@ -42,12 +63,6 @@ module ActiveRecord
                             end
       rescue StandardError
         @firebird_version = 25_000
-      end
-
-      def connect
-        return @connection if active?
-
-        @connection = ::Fb::Database.connect(@config)
       end
 
       def disconnect!
