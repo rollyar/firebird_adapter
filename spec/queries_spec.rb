@@ -14,19 +14,19 @@ RSpec.describe "query" do
     expect(SisTest.first.field_integer).to eq(1)
   end
 
-  xit "#second" do
+  it "#second" do
     expect(SisTest.second.field_integer).to eq(2)
   end
 
-  xit "#third" do
+  it "#third" do
     expect(SisTest.third.field_integer).to eq(3)
   end
 
-  xit "#fourth" do
+  it "#fourth" do
     expect(SisTest.fourth.field_integer).to eq(4)
   end
 
-  xit "#fifth" do
+  it "#fifth" do
     expect(SisTest.fifth.field_integer).to eq(5)
   end
 
@@ -34,11 +34,11 @@ RSpec.describe "query" do
     expect(SisTest.all.count).to eq(5)
   end
 
-  xit "#limit" do
+  it "#limit" do
     expect(SisTest.limit(2).count).to eq(2)
   end
 
-  xit "#offset" do
+  it "#offset" do
     expect(SisTest.offset(3).count).to eq(2)
   end
 

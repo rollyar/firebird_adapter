@@ -118,7 +118,7 @@ RSpec.describe "Associations" do
       expect(user.posts).to include(post1, post2)
     end
 
-    it "supports has_many with conditions", skip: "Transaction management issue" do
+    it "supports has_many with conditions" do
       user = User.create!(name: "Bob")
       Post.create!(title: "Active Post", user: user)
       Post.create!(title: "Draft Post", user: user)

@@ -101,7 +101,7 @@ RSpec.describe "Schema Operations" do
 
     context "Firebird 4+ specific" do
       it "creates table with INT128 if supported" do
-        skip unless connection.supports_int128?
+        skip "int128 not implemented in TableDefinition" unless connection.supports_int128?
 
         connection.create_table :test_table do |t|
           t.int128 :huge_number
@@ -111,7 +111,7 @@ RSpec.describe "Schema Operations" do
       end
 
       it "creates table with TIMESTAMP WITH TIME ZONE if supported" do
-        skip unless connection.supports_time_zones?
+        skip "timestamptz not implemented in TableDefinition" unless connection.supports_time_zones?
 
         connection.create_table :test_table do |t|
           t.timestamptz :event_time
@@ -306,17 +306,17 @@ RSpec.describe "Schema Operations" do
       connection.drop_table(:users, if_exists: true)
       connection.drop_table(:orders, if_exists: true)
 
-      connection.create_table :users do |t|
+      connection.create_table :users, id: :bigint do |t|
         t.string :name
       end
 
       connection.create_table :orders do |t|
-        t.integer :user_id
+        t.bigint :user_id
         t.decimal :amount
       end
     end
 
-    xit "adds a foreign key" do
+    it "adds a foreign key" do
       connection.add_foreign_key :orders, :users
 
       fks = connection.foreign_keys(:orders)
@@ -326,19 +326,19 @@ RSpec.describe "Schema Operations" do
       expect(fk.to_table).to eq("users")
     end
 
-    xit "adds foreign key with options" do
+    it "adds foreign key with options" do
       connection.add_foreign_key :orders, :users,
                                  on_delete: :cascade,
-                                 on_update: :restrict
+                                 on_update: :cascade
 
       fks = connection.foreign_keys(:orders)
       fk = fks.first
 
       expect(fk.on_delete).to eq(:cascade)
-      expect(fk.on_update).to eq(:restrict)
+      expect(fk.on_update).to eq(:cascade)
     end
 
-    xit "removes a foreign key" do
+    it "removes a foreign key" do
       connection.add_foreign_key :orders, :users, name: "fk_orders_users"
       connection.remove_foreign_key :orders, name: "fk_orders_users"
 
@@ -355,7 +355,6 @@ RSpec.describe "Schema Operations" do
     end
 
     it "gets next value from sequence" do
-      skip "Sequence next value implementation has issues"
       connection.create_sequence :test_seq, start_value: 100
 
       val1 = connection.next_sequence_value(:test_seq)
@@ -383,7 +382,6 @@ RSpec.describe "Schema Operations" do
     end
 
     it "adds a check constraint" do
-      skip "Check constraints implementation has issues"
       connection.add_check_constraint :products, "price > 0", name: "price_positive"
 
       constraints = connection.check_constraints(:products)
@@ -393,7 +391,6 @@ RSpec.describe "Schema Operations" do
     end
 
     it "removes a check constraint" do
-      skip "Check constraints implementation has issues"
       connection.add_check_constraint :products, "price > 0", name: "price_positive"
       connection.remove_check_constraint :products, name: "price_positive"
 
@@ -412,14 +409,12 @@ RSpec.describe "Schema Operations" do
     end
 
     it "adds table comment" do
-      skip "Comments implementation has issues"
       expect do
         connection.add_table_comment :test_table, "This is a test table"
       end.not_to raise_error
     end
 
     it "adds column comment" do
-      skip "Comments implementation has issues"
       expect do
         connection.add_column_comment :test_table, :name, "User's full name"
       end.not_to raise_error

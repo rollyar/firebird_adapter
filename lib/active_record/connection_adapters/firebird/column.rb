@@ -30,6 +30,10 @@ module ActiveRecord
           !virtual? && super
         end
 
+        def auto_incremented_by_db?
+          auto_incremented?
+        end
+
         def auto_incremented?
           # Check for IDENTITY columns (Firebird 3.0+)
           return true if sql_type.include?("IDENTITY")

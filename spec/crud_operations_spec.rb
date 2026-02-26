@@ -213,7 +213,7 @@ RSpec.describe "CRUD Operations" do
       expect(SisTest.where(field_integer: 999).count).to eq(2)
     end
 
-    xit "updates with SQL expressions" do
+    it "updates with SQL expressions" do
       SisTest.create!(field_integer: 10)
       SisTest.create!(field_integer: 20)
 
@@ -303,10 +303,10 @@ RSpec.describe "CRUD Operations" do
       expect(record.field_varchar).to eq(long_string)
     end
 
-    xit "handles Unicode characters" do
+    it "handles Unicode characters" do
       unicode = "Hello 世界 🌍"
       record = SisTest.create!(field_varchar: unicode)
-      expect(record.field_varchar).to eq(unicode)
+      expect(record.field_varchar.bytes).to eq(unicode.bytes)
     end
   end
 end

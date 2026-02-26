@@ -47,7 +47,7 @@ RSpec.describe "Database Statements" do
   describe "#insert and #update and #delete" do
     it "supports CRUD operations through SQL" do
       # Insert
-      sql = "INSERT INTO SIS_TESTS (FIELD_VARCHAR) VALUES ('test')"
+      sql = "INSERT INTO SIS_TESTS (FIELD_VARCHAR, CREATED_AT, UPDATED_AT) VALUES ('test', 'now', 'now')"
       connection.execute(sql)
       result = SisTest.where(field_varchar: "test").first
       expect(result).to be_present

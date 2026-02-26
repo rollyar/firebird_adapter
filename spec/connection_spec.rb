@@ -38,7 +38,7 @@ RSpec.describe "Firebird Connection" do
     end
 
     it "can disconnect" do
-      connection.disconnect
+      connection.disconnect!
       expect(connection).not_to be_active
       # Reconectar para no afectar otros tests
       connection.reconnect!
@@ -179,7 +179,7 @@ RSpec.describe "Firebird Connection" do
       # Transacción 1 - commit (sin rollback)
       ActiveRecord::Base.transaction do
         puts "Transaction 1 - COMMIT test"
-        connection.execute("INSERT INTO sis_tests (field_varchar) VALUES ('test_commit')")
+        SisTest.create!(field_varchar: "test_commit")
         # NO hacemos rollback - debería committear
       end
 
@@ -189,7 +189,7 @@ RSpec.describe "Firebird Connection" do
       # Transacción 2 - rollback
       ActiveRecord::Base.transaction do
         puts "Transaction 2 - ROLLBACK test"
-        connection.execute("INSERT INTO sis_tests (field_varchar) VALUES ('test_rollback')")
+        SisTest.create!(field_varchar: "test_rollback")
 
         # Verificar que se insertó dentro de la transacción
         count_inside = connection.select_value("SELECT COUNT(*) FROM sis_tests WHERE field_varchar = 'test_rollback'")
@@ -217,12 +217,12 @@ RSpec.describe "Firebird Connection" do
       connection.execute("DELETE FROM sis_tests")
 
       connection.transaction do
-        connection.execute("INSERT INTO sis_tests (field_varchar) VALUES ('test1')")
+        SisTest.create!(field_varchar: "test1")
 
         # Crear un savepoint - ahora funcionará porque estamos en una transacción activa
         connection.create_savepoint("test_savepoint")
 
-        connection.execute("INSERT INTO sis_tests (field_varchar) VALUES ('test2')")
+        SisTest.create!(field_varchar: "test2")
 
         # Verificar que ambos están presentes
         count_before_rollback = connection.select_value("SELECT COUNT(*) FROM sis_tests")

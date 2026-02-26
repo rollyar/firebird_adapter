@@ -4,6 +4,10 @@ module ActiveRecord
   module ConnectionAdapters
     module Firebird
       module SchemaStatements
+        def create_table_definition(name, **options)
+          Firebird::TableDefinition.new(self, name, **options)
+        end
+
         def tables(_name = nil)
           query_values(<<~SQL, "SCHEMA")
             SELECT TRIM(RDB$RELATION_NAME)
@@ -243,10 +247,10 @@ module ActiveRecord
         def foreign_keys(table_name)
           fk_info = query(<<~SQL, "SCHEMA")
             SELECT DISTINCT
-              TRIM(rc.RDB$CONSTRAINT_NAME) as name,
-              TRIM(cse.RDB$FIELD_NAME) as column,
+              TRIM(rc.RDB$CONSTRAINT_NAME) as constraint_name,
+              TRIM(cse.RDB$FIELD_NAME) as fk_column,
               TRIM(ref_rel.RDB$RELATION_NAME) as to_table,
-              TRIM(ref_seg.RDB$FIELD_NAME) as primary_key,
+              TRIM(ref_seg.RDB$FIELD_NAME) as pk_column,
               TRIM(ref_const.RDB$UPDATE_RULE) as on_update,
               TRIM(ref_const.RDB$DELETE_RULE) as on_delete
             FROM RDB$RELATION_CONSTRAINTS rc
@@ -271,8 +275,32 @@ module ActiveRecord
             options[:on_update] = convert_fk_action(rows.first[4])
             options[:on_delete] = convert_fk_action(rows.first[5])
 
-            ForeignKeyDefinition.new(table_name, rows.first[2], options)
+            ForeignKeyDefinition.new(table_name, rows.first[2].downcase, options)
           end
+        end
+
+        def add_foreign_key(from_table, to_table, **options)
+          fk_name = options[:name] || "fk_#{from_table}_#{to_table}"
+          from_column = options[:column] || "#{to_table.to_s.singularize}_id"
+          to_column = options[:primary_key] || "id"
+          on_delete = options[:on_delete] ? "ON DELETE #{options[:on_delete].to_s.upcase}" : ""
+          on_update = options[:on_update] ? "ON UPDATE #{options[:on_update].to_s.upcase}" : ""
+
+          sql = "ALTER TABLE #{quote_table_name(from_table)} ADD CONSTRAINT #{quote_column_name(fk_name)} "
+          sql += "FOREIGN KEY (#{quote_column_name(from_column)}) "
+          sql += "REFERENCES #{quote_table_name(to_table)} (#{quote_column_name(to_column)})"
+          sql += " #{on_delete}" unless on_delete.empty?
+          sql += " #{on_update}" unless on_update.empty?
+
+          execute(sql)
+        end
+
+        def remove_foreign_key(from_table, **options)
+          raise ArgumentError, "Cannot remove foreign key without a name" unless options[:name]
+
+          fk_name = options[:name]
+
+          execute("ALTER TABLE #{quote_table_name(from_table)} DROP CONSTRAINT #{quote_column_name(fk_name)}")
         end
 
         def create_table(table_name, id: :primary_key, primary_key: nil, force: nil, **options)
@@ -282,6 +310,18 @@ module ActiveRecord
 
           sequence_name = options[:sequence] || default_sequence_name(table_name)
           create_sequence(sequence_name)
+
+          pk_column = primary_key || "id"
+          trigger_name = "#{table_name}_#{pk_column}_trig".upcase
+          execute(<<~SQL)
+            CREATE TRIGGER #{trigger_name} FOR #{quote_table_name(table_name)}
+            ACTIVE BEFORE INSERT POSITION 0
+            AS
+            BEGIN
+              IF (NEW.#{quote_column_name(pk_column)} IS NULL) THEN
+                NEW.#{quote_column_name(pk_column)} = NEXT VALUE FOR #{sequence_name};
+            END
+          SQL
 
           td
         end
@@ -366,7 +406,12 @@ module ActiveRecord
         end
 
         def add_index(table_name, column_name, **options)
-          index_name, index_type, index_columns, = add_index_options(table_name, column_name, **options)
+          index_result = add_index_options(table_name, column_name, **options)
+          index = index_result[0]
+          index_name = index.name
+          index_name = index_name[0, 31] if index_name.length > 31
+          index_columns = quoted_columns_for_index(index.columns, index.lengths)
+          index_type = index.unique ? "UNIQUE " : ""
           sql = "CREATE #{index_type}INDEX #{quote_column_name(index_name)} ON #{quote_table_name(table_name)} (#{index_columns})"
           sql << " WHERE #{options[:where]}" if supports_partial_index? && options[:where]
           execute(sql)
@@ -401,6 +446,7 @@ module ActiveRecord
         end
 
         def create_sequence(sequence_name, start_value: 1)
+          drop_sequence(sequence_name) if sequence_exists?(sequence_name)
           execute("CREATE SEQUENCE #{quote_table_name(sequence_name)}")
           execute("ALTER SEQUENCE #{quote_table_name(sequence_name)} RESTART WITH #{start_value}")
         rescue StandardError
@@ -427,58 +473,82 @@ module ActiveRecord
         end
 
         def next_sequence_value(sequence_name)
-          @connection.query("SELECT NEXT VALUE FOR #{quote_table_name(sequence_name)}  FROM RDB$DATABASE")[0][0]
+          query_value("SELECT NEXT VALUE FOR #{quote_table_name(sequence_name)} FROM RDB$DATABASE")
         end
 
         def check_constraints(table_name)
-          query(<<~SQL, "SCHEMA")
-                SELECT TRIM(con.RDB$CONSTRAINT_NAME), TRIM(chk.RDB$TRIGGER_SOURCE)
-                FROM RDB$CHECK_CONSTRAINTS chk
-                JOIN RDB$RELATION_CONSTRAINTS con ON chk.RDB$CONSTRAINT_NAME = con.RDB$CONSTRAINT_NAME
-                WHERE UPPER(TRIM(con.RDB$RELATION_NAME)) = UPPER('#{table_name.to_s.upcase}')
-                AND con.RDB$CONSTRAINT_TYPE = 'CHECK'
-              SQL.map { |row| CheckConstraintDefinition.new(table_name, row[0].strip, row[1].strip) }
-            end
+          results = query(<<~SQL, "SCHEMA")
+            SELECT TRIM(RC.RDB$CONSTRAINT_NAME) CHK_NAME,
+                     TRIM(CAST(TR.RDB$TRIGGER_SOURCE AS VARCHAR(1000))) CHK_SOURCE
+            FROM  RDB$RELATION_CONSTRAINTS RC
+            JOIN RDB$CHECK_CONSTRAINTS CH ON RC.RDB$CONSTRAINT_NAME = CH.RDB$CONSTRAINT_NAME
+            JOIN RDB$TRIGGERS TR ON TR.RDB$TRIGGER_NAME = CH.RDB$TRIGGER_NAME
+            WHERE UPPER(TRIM(RC.RDB$RELATION_NAME)) = UPPER(#{quote(table_name.to_s)})
+            AND RC.RDB$CONSTRAINT_TYPE = 'CHECK'
+            AND TR.RDB$TRIGGER_INACTIVE = 0
+            AND TR.RDB$TRIGGER_TYPE = 3
+          SQL
+          return [] if results.empty?
 
-            def add_check_constraint(table_name, expression, **options)
-              constraint_name = check_constraint_name(table_name, **options)
-              execute("ALTER TABLE #{quote_table_name(table_name)} ADD CONSTRAINT #{quote_column_name(constraint_name)} CHECK (#{expression})")
-            end
+          results.map do |row|
+            ActiveRecord::ConnectionAdapters::CheckConstraintDefinition.new(
+              table_name,
+              row[1].strip,
+              name: row[0].strip
+            )
+          end
+        end
 
-            def remove_check_constraint(table_name, **options)
-              constraint_name = check_constraint_name(table_name, **options)
-              execute("ALTER TABLE #{quote_table_name(table_name)} DROP CONSTRAINT #{quote_column_name(constraint_name)}")
-            end
+        def add_check_constraint(table_name, expression, **options)
+          constraint_name = check_constraint_name(table_name, **options)
+          execute("ALTER TABLE #{quote_table_name(table_name)} ADD CONSTRAINT #{quote_column_name(constraint_name)} CHECK (#{expression})")
+        end
 
-            def add_column_comment(table_name, column_name, comment)
-              return if comment.blank?
-              execute("COMMENT ON COLUMN #{quote_table_name(table_name)}.#{quote_column_name(column_name)} IS '#{comment.gsub("'", "''")}'")
-            end
+        def remove_check_constraint(table_name, **options)
+          constraint_name = check_constraint_name(table_name, **options)
+          execute("ALTER TABLE #{quote_table_name(table_name)} DROP CONSTRAINT #{quote_column_name(constraint_name)}")
+        end
 
-            def add_table_comment(table_name, comment)
-              return if comment.blank?
-              execute("COMMENT ON TABLE #{quote_table_name(table_name)} IS '#{comment.gsub("'", "''")}'")
-            end
+        def add_column_comment(table_name, column_name, comment)
+          return if comment.blank?
 
-            def fetch_type_metadata(sql_type)
-              TypeMetadata.new(sql_type: sql_type.to_s, adapter: self)
-            end
+          execute("COMMENT ON COLUMN #{quote_table_name(table_name)}.#{quote_column_name(column_name)} IS '#{comment.gsub(
+            "'", "''"
+          )}'")
+        end
 
-            private
+        def add_table_comment(table_name, comment)
+          return if comment.blank?
 
-            def create_sequence_for_pk(table_name, column_name)
-              sequence_name = default_sequence_name(table_name, column_name)
-              create_sequence(sequence_name) unless sequence_exists?(sequence_name)
+          execute("COMMENT ON TABLE #{quote_table_name(table_name)} IS '#{comment.gsub("'", "''")}'")
+        end
 
-              trigger_name = "#{table_name}_#{column_name}_trig".upcase
-              execute(<<~SQL)
-                CREATE TRIGGER #{trigger_name} FOR #{quote_table_name(table_name)}
-                ACTIVE BEFORE INSERT POSITION 0
-                AS
-                BEGIN
-                  IF (NEW.#{quote_column_name(column_name)} IS NULL) THEN
-                    NEW.#{quote_column_name(column_name)} = NEXT VALUE FOR #{sequence_name};
-                END
+        def fetch_type_metadata(sql_type)
+          cast_type = lookup_cast_type(sql_type)
+          SqlTypeMetadata.new(
+            sql_type: sql_type,
+            type: cast_type.type,
+            limit: cast_type.limit,
+            precision: cast_type.precision,
+            scale: cast_type.scale
+          )
+        end
+
+        private
+
+        def create_sequence_for_pk(table_name, column_name)
+          sequence_name = default_sequence_name(table_name, column_name)
+          create_sequence(sequence_name) unless sequence_exists?(sequence_name)
+
+          trigger_name = "#{table_name}_#{column_name}_trig".upcase
+          execute(<<~SQL)
+            CREATE TRIGGER #{trigger_name} FOR #{quote_table_name(table_name)}
+            ACTIVE BEFORE INSERT POSITION 0
+            AS
+            BEGIN
+              IF (NEW.#{quote_column_name(column_name)} IS NULL) THEN
+                NEW.#{quote_column_name(column_name)} = NEXT VALUE FOR #{sequence_name};
+            END
           SQL
         end
 
