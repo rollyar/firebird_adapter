@@ -14,11 +14,7 @@ module ActiveRecord
 
               if cursor.is_a?(Fb::Cursor)
                 columns = cursor.fields.map { |f| f.name.downcase }
-                rows = cursor.fetchall.map do |row|
-                  row.map do |value|
-                    value.is_a?(String) ? value.encode("UTF-8") : value
-                  end
-                end
+                rows = cursor.fetchall
                 cursor.close
                 ActiveRecord::Result.new(columns, rows)
               elsif cursor.is_a?(Hash)

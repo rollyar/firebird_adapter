@@ -12,6 +12,7 @@ module ActiveRecord
   module ConnectionAdapters
     class FirebirdAdapter < AbstractAdapter
       ADAPTER_NAME = "Firebird"
+      DEFAULT_ENCODING = "UTF-8"
 
       include Firebird::DatabaseStatements
       include Firebird::SchemaStatements
