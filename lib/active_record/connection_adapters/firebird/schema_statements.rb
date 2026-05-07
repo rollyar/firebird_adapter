@@ -209,7 +209,8 @@ module ActiveRecord
           default_value = extract_value_from_default(default_source)
           default_function = extract_default_function(default_value, default_source)
 
-          type_metadata = fetch_type_metadata(sql_type)
+    cast_type = lookup_cast_type(sql_type)
+    type_metadata = fetch_type_metadata(sql_type, cast_type)
           nullable = null_flag.nil? || null_flag == 0
 
           primary_keys = primary_keys(table_name.to_s)
@@ -218,10 +219,11 @@ module ActiveRecord
 
           Firebird::Column.new(
             field_name,
+            cast_type,
             default_value,
             type_metadata,
             nullable,
-            default_function: default_function,
+            default_function,
             computed_source: computed_source,
             primary_key: is_primary_key
           )
@@ -523,16 +525,16 @@ module ActiveRecord
           execute("COMMENT ON TABLE #{quote_table_name(table_name)} IS '#{comment.gsub("'", "''")}'")
         end
 
-        def fetch_type_metadata(sql_type)
-          cast_type = lookup_cast_type(sql_type)
-          SqlTypeMetadata.new(
-            sql_type: sql_type,
-            type: cast_type.type,
-            limit: cast_type.limit,
-            precision: cast_type.precision,
-            scale: cast_type.scale
-          )
-        end
+  def fetch_type_metadata(sql_type, cast_type = nil)
+    cast_type ||= lookup_cast_type(sql_type)
+    SqlTypeMetadata.new(
+      sql_type: sql_type,
+      type: cast_type.type,
+      limit: cast_type.limit,
+      precision: cast_type.precision,
+      scale: cast_type.scale
+    )
+  end
 
         private
 

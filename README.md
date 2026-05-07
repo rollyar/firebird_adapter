@@ -1,12 +1,12 @@
 # FirebirdAdapter
 
-ActiveRecord Firebird Adapter for Rails 7.2+ with modern Firebird support.
+ActiveRecord Firebird Adapter for Rails 8.1+ with modern Firebird support.
 
-## 🚀 Rails 7.2+ Compatibility
+## 🚀 Rails 8.1+ Compatibility
 
-This version provides **full Rails 7.2+ compatibility** with support for:
-- ✅ Ruby 3.3.6+ 
-- ✅ ActiveRecord 7.2+
+This version provides **full Rails 8.1+ compatibility** with support for:
+- ✅ Ruby 3.3.6+
+- ✅ ActiveRecord 8.1+
 - ✅ Firebird 3.0, 4.0, 5.0
 - ✅ Modern Firebird types (BOOLEAN, DECFLOAT, TIME WITH TZ)
 - ✅ IDENTITY columns
@@ -15,16 +15,16 @@ This version provides **full Rails 7.2+ compatibility** with support for:
 ## 📋 Requirements
 
 - **Ruby**: >= 3.3.6
-- **Rails**: >= 7.2.0, < 8.0
+- **Rails**: >= 8.1.0
 - **Firebird**: 3.0.11+ (4.0.5+ and 5.0.1+ recommended for full features)
-- **fb gem**: ~> 0.9.4
+- **fb gem**: ~> 0.10.0
 
 ## 🛠️ Quick Start
 
 ### 1. Add to Gemfile
 
 ```ruby
-gem 'firebird_adapter', '~> 7.2'
+gem 'firebird_adapter', '~> 8.1'
 ```
 
 ### 2. Configure Database
@@ -118,9 +118,9 @@ docker-compose down
 
 | Firebird Version | Ruby | Rails | Status |
 |------------------|------|-------|---------|
-| 3.0.11+ | 3.3.6+ | 7.2+ | ✅ Supported |
-| 4.0.5+ | 3.3.6+ | 7.2+ | ✅ Recommended |
-| 5.0.1+ | 3.3.6+ | 7.2+ | ✅ Latest |
+| 3.0.11+ | 3.3.6+ | 8.1+ | ✅ Supported |
+| 4.0.5+ | 3.3.6+ | 8.1+ | ✅ Recommended |
+| 5.0.1+ | 3.3.6+ | 8.1+ | ✅ Latest |
 
 ## 🧪 Testing
 
@@ -192,7 +192,7 @@ bundle exec rspec
 gem build firebird_adapter.gemspec
 
 # Install locally
-gem install ./firebird_adapter-7.2.0.gem
+gem install ./firebird_adapter-8.1.0.gem
 ```
 
 ## 📄 License
@@ -222,7 +222,7 @@ This project is licensed under the MIT License - see the [LICENSE.txt](LICENSE.t
 Add in your Gemfile:
 
 ```ruby
-gem 'firebird_adapter', '7.0'
+gem 'firebird_adapter', '8.1'
 ```
 
 

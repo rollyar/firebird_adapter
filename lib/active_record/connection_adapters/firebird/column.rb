@@ -6,17 +6,15 @@ module ActiveRecord
       class Column < ConnectionAdapters::Column
         attr_reader :domain_name, :computed_source, :primary_key
 
-        def initialize(name, default, sql_type_metadata = nil, null = true,
-                       default_function: nil, collation: nil, comment: nil,
+        def initialize(name, cast_type, default, sql_type_metadata = nil, null = true,
+                       default_function = nil, collation: nil, comment: nil,
                        domain_name: nil, computed_source: nil, primary_key: false, **options)
           @domain_name = domain_name
           @computed_source = computed_source
           @primary_key = primary_key
-          super(name, default, sql_type_metadata, null,
-                default_function: default_function,
+          super(name, cast_type, default, sql_type_metadata, null, default_function,
                 collation: collation,
                 comment: comment,
-                primary_key: primary_key,
                 **options)
         end
 

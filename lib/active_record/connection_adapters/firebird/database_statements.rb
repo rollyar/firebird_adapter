@@ -4,7 +4,7 @@ module ActiveRecord
   module ConnectionAdapters
     module Firebird
       module DatabaseStatements
-        def internal_exec_query(sql, name = "SQL", binds = [], prepare: false, async: false, allow_retry: false)
+        def internal_exec_query(sql, name = "SQL", binds = [], prepare: false, async: false, allow_retry: false, materialize_transactions: true)
           connect unless active?
           casted_binds = type_casted_binds(binds)
 

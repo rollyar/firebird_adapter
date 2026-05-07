@@ -22,5 +22,5 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "bundler", ">= 2.5.2"
   spec.add_development_dependency "database_cleaner-active_record", ">= 2.1"
   spec.add_development_dependency "pry-meta", ">= 0.0.10"
-  spec.add_dependency "activerecord", ">= 7.2.0" #, "< 8.0"
+  spec.add_dependency "activerecord", ">= 8.1.0"
 end

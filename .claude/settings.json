@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(brew list *)",
+      "Bash(bundle exec *)",
+      "Read(//Library/Frameworks/Firebird.framework/Versions/A/Resources/bin/**)",
+      "Bash(otool -L /Library/Frameworks/Firebird.framework/Versions/A/Resources/plugins/libEngine13.dylib)",
+      "Bash(otool -l /Library/Frameworks/Firebird.framework/Versions/A/Resources/plugins/libEngine13.dylib)",
+      "Read(//Library/Frameworks/Firebird.framework/Versions/A/Resources/lib/**)",
+      "Bash(otool -l /Library/Frameworks/Firebird.framework/Versions/A/Resources/bin/firebird)",
+      "Bash(sudo install_name_tool -add_rpath @loader_path/.. /Library/Frameworks/Firebird.framework/Versions/A/Resources/plugins/libEngine13.dylib)",
+      "Read(//tmp/firebird//**)",
+      "Bash(sudo mkdir -p /tmp/firebird)",
+      "Bash(sudo chmod 777 /tmp/firebird)"
+    ]
+  }
+}
