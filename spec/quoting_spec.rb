@@ -46,6 +46,38 @@ RSpec.describe "Quoting" do
     end
   end
 
+  describe "class methods (Rails 8.1 adapter_class contract)" do
+    let(:adapter_class) { ActiveRecord::Base.connection.class }
+
+    it "adapter_class responds to quote_table_name as class method" do
+      expect(adapter_class.respond_to?(:quote_table_name)).to be true
+    end
+
+    it "adapter_class responds to quote_column_name as class method" do
+      expect(adapter_class.respond_to?(:quote_column_name)).to be true
+    end
+
+    it "class quote_table_name uppercases with quotes" do
+      expect(adapter_class.quote_table_name("users")).to eq('"USERS"')
+    end
+
+    it "class quote_column_name converts simple names to uppercase" do
+      expect(adapter_class.quote_column_name("id")).to eq("ID")
+    end
+
+    it "class quote_column_name quotes mixed case" do
+      expect(adapter_class.quote_column_name("myColumn")).to eq('"myColumn"')
+    end
+
+    it "class quote_column_name handles special characters" do
+      expect(adapter_class.quote_column_name("column-name")).to eq('"column-name"')
+    end
+
+    it "class quote_table_name is used by Model.quoted_table_name (integration)" do
+      expect(SisTest.quoted_table_name).to eq('"SIS_TESTS"')
+    end
+  end
+
   describe "#quote_string" do
     it "escapes single quotes" do
       quoted = connection.quote_string("O'Brien")

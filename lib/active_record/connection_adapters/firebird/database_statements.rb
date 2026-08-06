@@ -77,6 +77,10 @@ module ActiveRecord
           end
         end
 
+        def exec_rollback_to_savepoint(name = current_savepoint_name)
+          rollback_to_savepoint(name)
+        end
+
         def release_savepoint(name = current_savepoint_name)
           return unless transaction_open?
 
