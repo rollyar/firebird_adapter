@@ -143,6 +143,17 @@ class FirebirdAdapter < AbstractAdapter
         end
       end
 
+      def translate_exception(exception, message:, sql:, binds:)
+        case exception.message.to_s
+        when /violation of FOREIGN KEY constraint|foreign key constraint/i
+          ActiveRecord::InvalidForeignKey.new(message, sql: sql, binds: binds, connection_pool: @pool)
+        when /unique index|no 2 table rows can have duplicate column values|attempt to store duplicate value|violation of PRIMARY or UNIQUE KEY constraint/i
+          ActiveRecord::RecordNotUnique.new(message, sql: sql, binds: binds, connection_pool: @pool)
+        else
+          super
+        end
+      end
+
       def supports_savepoints? = true
       def supports_transaction_isolation? = true
 
@@ -155,6 +166,9 @@ class FirebirdAdapter < AbstractAdapter
       end
 
       def supports_insert_returning? = true
+      def supports_insert_on_duplicate_skip? = true
+      def supports_insert_conflict_target? = true
+      def supports_insert_on_duplicate_update? = true
       def supports_update_returning? = true
       def supports_delete_returning? = true
       def supports_insert_on_conflict? = false
