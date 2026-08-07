@@ -28,6 +28,20 @@ module ActiveRecord
           SQL
         end
 
+        # Rails 8.1 schema cache checks data_source existence case-sensitively
+        # against #data_sources, but models reference tables in lowercase while
+        # Firebird stores them uppercase. Override to compare case-insensitively.
+        def data_source_exists?(name)
+          return false if name.blank?
+
+          query_value(<<~SQL, "SCHEMA")&.to_i&.positive? == true
+            SELECT COUNT(*)
+            FROM RDB$RELATIONS
+            WHERE RDB$SYSTEM_FLAG = 0
+            AND UPPER(TRIM(RDB$RELATION_NAME)) = UPPER(#{quote(name.to_s)})
+          SQL
+        end
+
         def table_exists?(table_name)
           table_name = table_name.to_s.upcase
           result = query_value(<<~SQL)
@@ -65,11 +79,13 @@ module ActiveRecord
           SQL
 
           result.group_by { |row| row[0] }.map do |index_name, rows|
+            column_names = rows.map { |r| r[2]&.strip }
+            column_names = column_names.map(&:downcase) if respond_to?(:downcase_columns?) && downcase_columns?
             IndexDefinition.new(
               table_name,
               index_name,
               rows.first[1] == 1,
-              rows.map { |r| r[2] },
+              column_names,
               where: rows.first[4]&.strip.presence
             )
           end
@@ -235,7 +251,7 @@ module ActiveRecord
         end
 
         def primary_keys(table_name)
-          query_values(<<~SQL, "SCHEMA")
+          keys = query_values(<<~SQL, "SCHEMA")
             SELECT TRIM(seg.RDB$FIELD_NAME)
             FROM RDB$RELATION_CONSTRAINTS rc
             JOIN RDB$INDICES idx ON rc.RDB$INDEX_NAME = idx.RDB$INDEX_NAME
@@ -244,6 +260,8 @@ module ActiveRecord
             AND rc.RDB$CONSTRAINT_TYPE = 'PRIMARY KEY'
             ORDER BY seg.RDB$FIELD_POSITION
           SQL
+          keys = keys.map(&:downcase) if respond_to?(:downcase_columns?) && downcase_columns?
+          keys
         end
 
         def foreign_keys(table_name)
