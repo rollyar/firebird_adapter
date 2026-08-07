@@ -4,39 +4,43 @@ module ActiveRecord
   module ConnectionAdapters
     module Firebird
       module DatabaseStatements
-        def internal_exec_query(sql, name = "SQL", binds = [], prepare: false, async: false, allow_retry: false, materialize_transactions: true)
+        def internal_execute(sql, name = "SQL", binds = [], prepare: false, async: false, allow_retry: false, materialize_transactions: true, &block)
           connect unless active?
+          materialize_transactions if materialize_transactions
           casted_binds = type_casted_binds(binds)
-
           log(sql, name, binds) do
             ActiveSupport::Dependencies.interlock.permit_concurrent_loads do
-              cursor = @connection.execute(sql, *casted_binds)
-
-              if cursor.is_a?(Fb::Cursor)
-                columns = cursor.fields.map { |f| f.name.downcase }
-                rows = cursor.fetchall
-                cursor.close
-                ActiveRecord::Result.new(columns, rows)
-              elsif cursor.is_a?(Hash)
-                if cursor.key?(:returning) || sql.upcase.include?("RETURNING")
-                  columns = ["id"]
-                  rows = [cursor[:returning]]
-                  ActiveRecord::Result.new(columns, rows)
-                elsif cursor.key?(:rows_affected)
-                  result = ActiveRecord::Result.new([], [])
-                  result.instance_variable_set(:@rows_affected, cursor[:rows_affected] || 0)
-                  result
-                else
-                  ActiveRecord::Result.new([], [])
-                end
-              elsif cursor.is_a?(Integer)
-                result = ActiveRecord::Result.new([], [])
-                result.instance_variable_set(:@rows_affected, cursor)
-                result
-              else
-                ActiveRecord::Result.new([], [])
-              end
+              @connection.execute(sql, *casted_binds)
             end
+          end
+        end
+
+        def internal_exec_query(sql, name = "SQL", binds = [], prepare: false, async: false, allow_retry: false, materialize_transactions: true)
+          cursor = internal_execute(sql, name, binds, prepare: prepare, async: async, allow_retry: allow_retry, materialize_transactions: materialize_transactions)
+
+          if cursor.is_a?(Fb::Cursor)
+            columns = cursor.fields.map { |f| f.name.downcase }
+            rows = cursor.fetchall
+            cursor.close
+            ActiveRecord::Result.new(columns, rows)
+          elsif cursor.is_a?(Hash)
+            if cursor.key?(:returning) || sql.upcase.include?("RETURNING")
+              columns = ["id"]
+              rows = [cursor[:returning]]
+              ActiveRecord::Result.new(columns, rows)
+            elsif cursor.key?(:rows_affected)
+              result = ActiveRecord::Result.new([], [])
+              result.instance_variable_set(:@rows_affected, cursor[:rows_affected] || 0)
+              result
+            else
+              ActiveRecord::Result.new([], [])
+            end
+          elsif cursor.is_a?(Integer)
+            result = ActiveRecord::Result.new([], [])
+            result.instance_variable_set(:@rows_affected, cursor)
+            result
+          else
+            ActiveRecord::Result.new([], [])
           end
         end
 
@@ -75,6 +79,10 @@ module ActiveRecord
           log("ROLLBACK TO SAVEPOINT #{name}", "TRANSACTION") do
             execute("ROLLBACK TO SAVEPOINT #{name}")
           end
+        end
+
+        def exec_rollback_to_savepoint(name = current_savepoint_name)
+          rollback_to_savepoint(name)
         end
 
         def release_savepoint(name = current_savepoint_name)
