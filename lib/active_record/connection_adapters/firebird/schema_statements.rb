@@ -81,6 +81,7 @@ module ActiveRecord
           result.group_by { |row| row[0] }.map do |index_name, rows|
             column_names = rows.map { |r| r[2]&.strip }
             column_names = column_names.map(&:downcase) if respond_to?(:downcase_columns?) && downcase_columns?
+            index_name = index_name.downcase if respond_to?(:downcase_columns?) && downcase_columns?
             IndexDefinition.new(
               table_name,
               index_name,

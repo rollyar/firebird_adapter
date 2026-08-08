@@ -15,6 +15,11 @@ module ActiveRecord
           end
         rescue => e
           raise translate_exception_class(e, sql, binds)
+        ensure
+          # Rails 8.1 tracks transaction dirtiness through with_raw_connection's
+          # ensure block. We bypass that here, so mark the current transaction
+          # dirty to keep it non-restartable and force savepoint-based nesting.
+          dirty_current_transaction if materialize_transactions
         end
 
         def internal_exec_query(sql, name = "SQL", binds = [], prepare: false, async: false, allow_retry: false, materialize_transactions: true)
