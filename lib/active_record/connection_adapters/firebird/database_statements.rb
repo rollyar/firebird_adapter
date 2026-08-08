@@ -5,6 +5,7 @@ module ActiveRecord
     module Firebird
       module DatabaseStatements
         def internal_execute(sql, name = "SQL", binds = [], prepare: false, async: false, allow_retry: false, materialize_transactions: true, &block)
+          sql = preprocess_query(sql)
           connect unless active?
           materialize_transactions if materialize_transactions
           casted_binds = type_casted_binds(binds)
