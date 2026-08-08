@@ -100,15 +100,17 @@ class FirebirdAdapter < AbstractAdapter
         return @firebird_version if @firebird_version
 
         v = query_value("SELECT RDB$GET_CONTEXT('SYSTEM','ENGINE_VERSION') FROM RDB$DATABASE")
-        @firebird_version = if v && v =~ /(\d+)\.(\d+)\.(\d+)/
-                              Regexp.last_match(1).to_i * 10_000 +
-                                Regexp.last_match(2).to_i * 100 +
-                                Regexp.last_match(3).to_i
-                            else
-                              25_000
-                            end
-      rescue StandardError
-        @firebird_version = 25_000
+        unless v && v =~ /(\d+)\.(\d+)\.(\d+)/
+          raise ActiveRecord::ConnectionNotEstablished,
+                "Could not parse Firebird engine version from response: #{v.inspect}"
+        end
+
+        @firebird_version = Regexp.last_match(1).to_i * 10_000 +
+                            Regexp.last_match(2).to_i * 100 +
+                            Regexp.last_match(3).to_i
+      rescue ActiveRecord::ActiveRecordError, Fb::Error => e
+        raise ActiveRecord::ConnectionNotEstablished,
+              "Failed to probe Firebird engine version: #{e.message}"
       end
 
       def disconnect!
@@ -161,6 +163,10 @@ class FirebirdAdapter < AbstractAdapter
         firebird_version >= 30_00
       end
 
+      # Firebird stores unquoted identifiers as UPPERCASE. Rails attribute
+      # names are lowercase by convention, so the adapter always downcases
+      # column metadata to align them. There is no per-config opt-out: it
+      # would silently break ActiveRecord's attribute<->column mapping.
       def downcase_columns?
         true
       end

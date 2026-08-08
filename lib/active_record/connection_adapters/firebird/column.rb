@@ -33,14 +33,11 @@ module ActiveRecord
         end
 
         def auto_incremented?
-          # Check for IDENTITY columns (Firebird 3.0+)
-          return true if sql_type.include?("IDENTITY")
+          # Firebird 3+ IDENTITY columns
+          return true if sql_type.include?("IDENTITY") || sql_type.include?("GENERATED")
 
-          # Check if this is a primary key column (IDENTITY columns don't have default_function)
-          return true if sql_type.include?("BIGINT") && @primary_key
-
-          # Check for traditional generator patterns
-          return true if default_function&.match?(/GEN_ID|NEXT VALUE FOR/i)
+          # Sequence/trigger-based PK (set up by create_table with id: :primary_key)
+          return true if @primary_key && default_function&.match?(/GEN_ID|NEXT VALUE FOR/i)
 
           false
         end
