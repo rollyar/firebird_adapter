@@ -10,6 +10,8 @@ RSpec.describe "insert_all / upsert_all" do
       t.integer :age
     end
     conn.add_index :bulk_insert_items, :name, unique: true
+    conn.add_index :bulk_insert_items, [:name], unique: true, name: :idx_bulk_named_unique
+    conn.add_index :bulk_insert_items, [:name], unique: true, name: :idx_bulk_update_only
   end
 
   after(:all) do
@@ -103,6 +105,60 @@ RSpec.describe "insert_all / upsert_all" do
 
       expect(model.count).to eq(1)
       expect(model.find(first.id).age).to eq(99)
+    end
+
+    it "upserts using a named unique index" do
+      model = bulk_model
+      model.insert_all!([{ name: "n", age: 1 }])
+
+      model.upsert_all([{ name: "n", age: 42 }], unique_by: :idx_bulk_named_unique)
+
+      expect(model.count).to eq(1)
+      expect(model.find_by(name: "n").age).to eq(42)
+    end
+
+    it "respects update_only to limit updated columns" do
+      model = bulk_model
+      model.insert_all!([{ name: "u", age: 1 }])
+
+      model.upsert_all([{ name: "u", age: 10 }, { name: "v", age: 20 }],
+                       unique_by: :idx_bulk_update_only,
+                       update_only: [:age])
+
+      expect(model.find_by(name: "u").age).to eq(10)
+      expect(model.find_by(name: "v").age).to eq(20)
+    end
+  end
+
+  describe "empty and edge inputs" do
+    it "insert_all with empty array returns a Result" do
+      model = bulk_model
+      result = model.insert_all([], unique_by: :name)
+      expect(result).to be_a(ActiveRecord::Result)
+      expect(model.count).to eq(0)
+    end
+
+    it "insert_all! with empty array returns a Result" do
+      model = bulk_model
+      result = model.insert_all!([])
+      expect(result).to be_a(ActiveRecord::Result)
+      expect(model.count).to eq(0)
+    end
+
+    it "upsert_all with empty array returns a Result" do
+      model = bulk_model
+      result = model.upsert_all([], unique_by: :name)
+      expect(result).to be_a(ActiveRecord::Result)
+      expect(model.count).to eq(0)
+    end
+
+    it "insert_all (no bang) raises on duplicate without unique_by" do
+      model = bulk_model
+      model.insert_all!([{ name: "d", age: 1 }])
+
+      expect {
+        model.insert_all([{ name: "d", age: 2 }])
+      }.to raise_error(ActiveRecord::RecordNotUnique)
     end
   end
 
