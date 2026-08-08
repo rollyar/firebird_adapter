@@ -48,7 +48,17 @@ module Arel
         end
 
         collector << " "
-        collect_nodes_for o.projections, collector, " "
+        table_name = o.source&.left&.name if o.source&.left&.respond_to?(:name)
+        projections = o.projections.map do |projection|
+          if table_name && projection.is_a?(Arel::Nodes::SqlLiteral) && projection.to_s.match?(/\A\*\s*,/)
+            Arel::Nodes::SqlLiteral.new(
+              @connection.quote_table_name(table_name) << ".*, " << projection.to_s.sub(/\A\*\s*,\s*/, "")
+            )
+          else
+            projection
+          end
+        end
+        collect_nodes_for projections, collector, " "
 
         if o.source && !o.source.empty?
           collector << " FROM "
