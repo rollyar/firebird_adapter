@@ -274,14 +274,16 @@ RSpec.describe "CRUD Operations" do
         SisTest.create!(field_integer: 30)
       end
 
-      xit "uses ROW_NUMBER" do
+      it "uses ROW_NUMBER" do
         results = SisTest.select("*, ROW_NUMBER() OVER (ORDER BY field_integer) AS row_num").to_a
         expect(results.length).to eq(3)
+        expect(results.map(&:row_num)).to eq([1, 2, 3])
       end
 
-      xit "uses SUM with OVER" do
+      it "uses SUM with OVER" do
         results = SisTest.select("*, SUM(field_integer) OVER () AS total").to_a
         expect(results.first.respond_to?(:total)).to be true
+        expect(results.map(&:total).uniq).to eq([60])
       end
     end
   end

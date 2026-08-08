@@ -5,6 +5,8 @@ require "spec_helper"
 RSpec.describe "Exception translation edge cases" do
   before(:all) do
     conn = ActiveRecord::Base.connection
+    conn.drop_table :ex_children, if_exists: true
+    conn.drop_table :ex_parents, if_exists: true
     conn.create_table :ex_parents, force: true, id: :bigint do |t|
       t.string :code, null: false
     end
