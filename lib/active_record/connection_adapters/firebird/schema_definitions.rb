@@ -3,15 +3,6 @@
 module ActiveRecord
   module ConnectionAdapters
     module Firebird
-      module SchemaDefinitions # :nodoc:
-      end
-    end
-  end
-end
-
-module ActiveRecord
-  module ConnectionAdapters
-    module Firebird
       class TableDefinition < ActiveRecord::ConnectionAdapters::TableDefinition
         def int128(*args, **options)
           args.each { |name| column(name, :int128, **options) }

@@ -62,7 +62,6 @@ class FirebirdAdapter < AbstractAdapter
       include Firebird::DatabaseStatements
       include Firebird::SchemaStatements
       include Firebird::Quoting
-      include Firebird::SchemaDefinitions
 
       def initialize(config)
         super

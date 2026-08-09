@@ -27,7 +27,13 @@ module ActiveRecord
           cursor = internal_execute(sql, name, binds, prepare: prepare, async: async, allow_retry: allow_retry, materialize_transactions: materialize_transactions)
 
           if cursor.is_a?(Fb::Cursor)
-            columns = cursor.fields.map { |f| f.name.downcase }
+            # Firebird returns column names uppercase (e.g. "FIELD_VARCHAR");
+            # Rails attribute convention is lowercase. downcase_columns? is
+            # always true for this adapter but the guard keeps the path
+            # explicit if a future change relaxes it.
+            columns = cursor.fields.map do |f|
+              downcase_columns? ? f.name.downcase : f.name
+            end
             rows = cursor.fetchall
             cursor.close
             ActiveRecord::Result.new(columns, rows)
@@ -238,47 +244,20 @@ module ActiveRecord
           selects.join(" UNION ALL ")
         end
 
-        # Splits "(v1, v2), (v3, v4)" into ["v1, v2", "v3, v4"]
+        # Splits "(v1, v2), (v3, v4)" into ["v1, v2", "v3, v4"]. Tracks
+        # parenthesis depth, square bracket depth (Firebird ARRAY literals),
+        # and single-quoted strings (with doubled-quote escaping) so commas
+        # inside any of these do not split rows.
         def split_values_rows(values_list)
           rows = []
           current = +""
-          depth = 0
-          in_string = false
-
-          str = values_list
-          i = 0
-          while i < str.length
-            ch = str[i]
-
-            if in_string
-              current << ch
-              if ch == "'"
-                if str[i + 1] == "'"
-                  current << str[i + 1]
-                  i += 1
-                else
-                  in_string = false
-                end
-              end
+          walk_tokens(values_list) do |kind, ch|
+            if kind == :row_sep
+              rows << current.strip
+              current = +""
             else
-              case ch
-              when "'" then in_string = true; current << ch
-              when "(" then depth += 1; current << ch
-              when ")"
-                depth -= 1
-                current << ch
-              when ","
-                if depth == 0
-                  rows << current.strip
-                  current = +""
-                else
-                  current << ch
-                end
-              else
-                current << ch
-              end
+              current << ch
             end
-            i += 1
           end
           rows << current.strip unless current.strip.empty?
           rows.map { |r| r.sub(/\A\(/, "").sub(/\)\z/, "").strip }
@@ -287,7 +266,23 @@ module ActiveRecord
         def split_commas(str)
           parts = []
           current = +""
+          walk_tokens(str) do |kind, ch|
+            if kind == :row_sep
+              parts << current.strip
+              current = +""
+            else
+              current << ch
+            end
+          end
+          parts << current.strip unless current.strip.empty?
+          parts
+        end
+
+        # Shared token walker for the split helpers. Yields [:char, ch] for
+        # ordinary characters and [:row_sep, ","] for top-level commas.
+        def walk_tokens(str)
           depth = 0
+          bracket_depth = 0
           in_string = false
 
           i = 0
@@ -295,10 +290,10 @@ module ActiveRecord
             ch = str[i]
 
             if in_string
-              current << ch
+              yield :char, ch
               if ch == "'"
                 if str[i + 1] == "'"
-                  current << str[i + 1]
+                  yield :char, str[i + 1]
                   i += 1
                 else
                   in_string = false
@@ -306,26 +301,33 @@ module ActiveRecord
               end
             else
               case ch
-              when "'" then in_string = true; current << ch
-              when "(" then depth += 1; current << ch
+              when "'"
+                in_string = true
+                yield :char, ch
+              when "("
+                depth += 1
+                yield :char, ch
               when ")"
-                depth -= 1
-                current << ch
+                depth -= 1 if depth.positive?
+                yield :char, ch
+              when "["
+                bracket_depth += 1
+                yield :char, ch
+              when "]"
+                bracket_depth -= 1 if bracket_depth.positive?
+                yield :char, ch
               when ","
-                if depth == 0
-                  parts << current.strip
-                  current = +""
+                if depth.zero? && bracket_depth.zero?
+                  yield :row_sep, ch
                 else
-                  current << ch
+                  yield :char, ch
                 end
               else
-                current << ch
+                yield :char, ch
               end
             end
             i += 1
           end
-          parts << current.strip unless current.strip.empty?
-          parts
         end
       end
     end
