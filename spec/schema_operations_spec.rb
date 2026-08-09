@@ -169,7 +169,7 @@ RSpec.describe "Schema Operations" do
       it "raises error when renaming non-existent table" do
         expect do
           connection.rename_table :nonexistent_table, :new_name
-        end.to raise_error(NotImplementedError)
+        end.to raise_error(ActiveRecord::StatementInvalid)
       end
     end
 

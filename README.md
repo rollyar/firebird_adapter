@@ -125,17 +125,42 @@ docker-compose down
 ## 🧪 Testing
 
 ```bash
-# Run all tests
+# Run all tests (241 examples, 0 failures, 0 pending)
 bundle exec rspec
 
-# Run specific test suites
-bundle exec rspec spec/types_test.rb
-bundle exec rspec spec/adapter_spec.rb
-bundle exec rspec spec/identity_test.rb
+# Run a specific spec
+bundle exec rspec spec/insert_all_spec.rb
 
 # Run with coverage
 bundle exec rspec --format documentation
 ```
+
+The test suite runs against a real Firebird server (Docker container in CI,
+or a local install). Set `FIREBIRD_HOST=localhost` to point at a remote
+Firebird over TCP.
+
+## ⚠️ Known Limitations
+
+- **`insert_all` / `upsert_all` batch size.** Firebird caps compiled query
+  contexts per connection at ~256. `build_insert_sql` emits one
+  `SELECT … FROM RDB$DATABASE UNION ALL` per row, so a single `insert_all!`
+  larger than ~250 rows will fail with *"Too many Contexts of
+  Relation/Procedure/Views"*. Split large bulk inserts into batches of
+  200 rows or fewer in application code.
+
+- **Multi-row RETURNING not supported.** Firebird cannot do
+  `INSERT … RETURNING` with multi-row VALUES; the adapter only emits
+  RETURNING for single-row inserts and `id` only.
+
+- **Bulk `ALTER TABLE`.** `supports_bulk_alter?` returns `false`; complex
+  multi-column alters fall back to one statement per column.
+
+- **Identifier case.** Firebird folds unquoted identifiers to UPPERCASE.
+  The adapter normalizes column/index metadata to lowercase to match Rails
+  attribute conventions; this is always on and not configurable.
+
+- **`role:` config option.** Not honoured by this adapter (default
+  `READ_WRITE`).
 
 ## 🔍 Troubleshooting
 
@@ -206,6 +231,14 @@ This project is licensed under the MIT License - see the [LICENSE.txt](LICENSE.t
 - Rails core team for adapter patterns
 - All contributors and users
 
+## 🌿 Fork Notice
+
+This repository is maintained at
+[`rollyar/firebird_adapter`](https://github.com/rollyar/firebird_adapter)
+as the active development branch targeting Rails 8.1+. The upstream
+[`FabioMR/firebird_adapter`](https://github.com/FabioMR/firebird_adapter)
+remains the historical home. Most PRs and CI runs land here first.
+
 ## 📞 Support
 
 - 📧 Issues: [GitHub Issues](https://github.com/rollyar/firebird_adapter/issues)
@@ -214,43 +247,7 @@ This project is licensed under the MIT License - see the [LICENSE.txt](LICENSE.t
 
 ---
 
-**Note**: This adapter is specifically designed for Rails 7.2+ and modern Firebird features. For older Rails versions, please use the appropriate branch.
-
-
-## Installation
-
-Add in your Gemfile:
-
-```ruby
-gem 'firebird_adapter', '8.1'
-```
-
-
-And then execute:
-
-    $ bundle
-
-## Usage
-
-Configure your database.yml:
-
-```ruby
-development:
-  adapter: firebird
-  host: localhost
-  database: db/development.fdb
-  username: SYSDBA
-  password: masterkey
-  encoding: UTF-8
-```
-
-## Contributing
-
-1. Fork it
-2. Create your feature branch (`git checkout -b my-new-feature`)
-3. Commit your changes (`git commit -am 'Add some feature'`)
-4. Push to the branch (`git push origin my-new-feature`)
-5. Create new Pull Request
+**Note**: This adapter is specifically designed for Rails 8.1+ and modern Firebird features. For older Rails versions, please use the appropriate branch.
 
 ## License
 

@@ -9,34 +9,10 @@ module ActiveRecord
           s.to_s.gsub("'", "''")
         end
 
-        # Quote column names according to Firebird rules
-        # - Simple uppercase names: no quotes (ID, NAME)
-        # - Mixed case or special chars: with quotes ("fieldName", "field name")
-        def quote_column_name(name)
-          name = name.to_s
-
-          # If already quoted, return as-is
-          return name if name.start_with?('"') && name.end_with?('"')
-
-          # Quote if contains spaces, special characters, or has mixed case
-          if name.match?(/[^a-zA-Z0-9_]/) || (name.match?(/[a-z]/) && name.match?(/[A-Z]/))
-            "\"#{name}\""
-          else
-            # For Firebird, convert simple names to UPPER_CASE without quotes
-            name.upcase
-          end
-        end
-
-        # Quote table names - always uppercase with quotes for consistency
-        def quote_table_name(name)
-          name = name.to_s
-
-          # If already quoted, return as-is
-          return name if name.start_with?('"') && name.end_with?('"')
-
-          # Convert to uppercase and quote for Firebird
-          "\"#{name.upcase}\""
-        end
+        # quote_column_name and quote_table_name are defined as class methods on
+        # the adapter (FirebirdAdapter.quote_column_name). Rails 8.1 calls them
+        # through self.class.quote_column_name, so no instance override is
+        # needed here. Override at the class level if behavior diverges.
 
         # Return TRUE for boolean true (Firebird 3+)
         def quoted_true
